@@ -8,9 +8,23 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR.parent / ".env")
 
+
+def env_list(name: str, default: str = "") -> list[str]:
+    """Comma-separated env var -> clean list (no blanks, no trailing slashes)."""
+    return [v.strip().rstrip("/") for v in os.environ.get(name, default).split(",") if v.strip()]
+
+
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-insecure-change-me")
 DEBUG = os.environ.get("DJANGO_DEBUG", "1") == "1"
-ALLOWED_HOSTS = [h for h in os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if h]
+
+# Hostnames only: NO ports and NO https://. These are the hosts THIS Django server answers to.
+# Add your deployed backend's hostname via DJANGO_ALLOWED_HOSTS (e.g. "api.example.com").
+ALLOWED_HOSTS = sorted(
+    set(
+        ["localhost", "127.0.0.1"]
+        + env_list("DJANGO_ALLOWED_HOSTS")
+    )
+)
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -69,21 +83,28 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
 ]
-ALLOWED_HOSTS = [
-    "localhost",
-    "127.0.0.1",
-    "anicatz-7v6u.vercel.app",
-]
+
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": ["rest_framework_simplejwt.authentication.JWTAuthentication"],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.AllowAny"],
 }
 SIMPLE_JWT = {"ACCESS_TOKEN_LIFETIME": timedelta(hours=1), "REFRESH_TOKEN_LIFETIME": timedelta(days=14)}
 
-CORS_ALLOWED_ORIGINS = [o for o in os.environ.get("CORS_ALLOWED_ORIGINS", "http://localhost:3000").split(",") if o]
-CORS_ALLOWED_ORIGINS = [
-    "https://anicatz.vercel.app",
-]
+# Websites (frontends) that are allowed to call this API from the browser.
+# Needs scheme + host + port, no trailing slash. localhost and 127.0.0.1 are different origins.
+# For a phone on your Wi-Fi, add e.g. http://192.168.1.5:3000 via CORS_ALLOWED_ORIGINS in .env
+CORS_ALLOWED_ORIGINS = sorted(
+    set(
+        [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "https://anicatz.vercel.app",
+            "https://anicatz-7v6u.vercel.app",
+        ]
+        + env_list("CORS_ALLOWED_ORIGINS")
+    )
+)
+
 LANGUAGE_CODE = "en-us"
 TIME_ZONE = "UTC"
 USE_I18N = True

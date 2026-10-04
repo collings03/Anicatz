@@ -28,11 +28,28 @@ function gmtLabel(now: Date) {
   return `GMT${off >= 0 ? "+" : "-"}${hh}:${mm}`;
 }
 
+/** Live clock in its own component so the ticking only re-renders this pill, not the whole schedule. */
+function Clock() {
+  const [now, setNow] = useState<Date | null>(null);
+
+  useEffect(() => {
+    setNow(new Date());
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  if (!now) return null;
+  return (
+    <span className="rounded-full bg-white px-3.5 py-1.5 text-xs font-medium text-black">
+      ({gmtLabel(now)}) {now.toLocaleDateString("en-GB")} {now.toLocaleTimeString("en-US")}
+    </span>
+  );
+}
+
 export default function HomeSchedule() {
   const [days, setDays] = useState<Date[]>([]);
   const [todayIdx, setTodayIdx] = useState(0);
   const [selected, setSelected] = useState(0);
-  const [now, setNow] = useState<Date | null>(null);
   const [cache, setCache] = useState<Record<string, ScheduleItem[]>>({});
   const [error, setError] = useState(false);
   const [retry, setRetry] = useState(0);
@@ -45,9 +62,6 @@ export default function HomeSchedule() {
     setDays(days);
     setTodayIdx(today);
     setSelected(today);
-    setNow(new Date());
-    const t = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(t);
   }, []);
 
   /** Tabs visible at once (7 on desktop, 4 on small screens). */
@@ -68,15 +82,20 @@ export default function HomeSchedule() {
 
   useEffect(() => {
     if (days.length) showDay(todayIdx);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [days.length, todayIdx]);
 
   useEffect(() => {
     if (!days.length) return;
     const d = days[selected];
     const k = keyOf(d);
-    if (cache[k]) return;
-    const ctrl = new AbortController();
+
+    // FIX: clear any old error first, so switching to an already-loaded day
+    // doesn't keep showing "Couldn't load this day".
     setError(false);
+    if (cache[k]) return;
+
+    const ctrl = new AbortController();
     const start = Math.floor(new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() / 1000);
     const end = Math.floor(new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime() / 1000);
     fetch(`${API}/anime/schedule/?start=${start}&end=${end}&lang=${clientLang()}`, { signal: ctrl.signal })
@@ -124,11 +143,7 @@ export default function HomeSchedule() {
               Today
             </button>
           )}
-          {now && (
-            <span className="rounded-full bg-white px-3.5 py-1.5 text-xs font-medium text-black">
-              ({gmtLabel(now)}) {now.toLocaleDateString("en-GB")} {now.toLocaleTimeString("en-US")}
-            </span>
-          )}
+          <Clock />
         </div>
       </div>
 
