@@ -96,6 +96,8 @@ export default function Navbar() {
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [compact, setCompact] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
+  // Keeps the menu in the page for a moment after closing so it can fade out smoothly.
+  const [menuMounted, setMenuMounted] = useState(false);
 
   const searchBox = useRef<HTMLDivElement>(null);
   const menuBox = useRef<HTMLDivElement>(null);
@@ -112,6 +114,15 @@ export default function Navbar() {
       window.removeEventListener("anicatz-profile", onProfile);
     };
   }, []);
+
+  useEffect(() => {
+    if (menuOpen) {
+      setMenuMounted(true);
+      return;
+    }
+    const t = setTimeout(() => setMenuMounted(false), 260);
+    return () => clearTimeout(t);
+  }, [menuOpen]);
 
   // Close everything after navigating.
   useEffect(() => {
@@ -276,8 +287,17 @@ export default function Navbar() {
 
   const bar = (
     <header style={{ position: "fixed", left: 0, right: 0, zIndex: 9999 }} className="fixed inset-x-0 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-50 w-full max-w-[100vw] px-2 min-[400px]:px-3 md:bottom-auto md:top-3">
+      {/* Lightly blurs the whole page behind the open menu. The blur amount and the tint both ease
+          in and out, so closing the menu un-blurs the page gradually. */}
+      <div
+        aria-hidden
+        className={`fixed inset-0 z-0 transition-[backdrop-filter,background-color] duration-300 ease-out motion-reduce:transition-none ${
+          menuOpen ? "bg-black/15 backdrop-blur-[3px]" : "pointer-events-none bg-black/0 backdrop-blur-0"
+        }`}
+      />
+
       <nav
-        className={`liquid-nav mx-auto relative flex w-full min-w-0 max-w-6xl items-center gap-1.5 rounded-full py-1.5 pl-2 pr-1.5 min-[400px]:gap-2 min-[400px]:py-2 min-[400px]:pl-3 min-[400px]:pr-2 md:gap-3 origin-bottom md:origin-top will-change-transform transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
+        className={`liquid-nav mx-auto relative z-10 flex w-full min-w-0 max-w-6xl items-center gap-1.5 rounded-full py-1.5 pl-2 pr-1.5 min-[400px]:gap-2 min-[400px]:py-2 min-[400px]:pl-3 min-[400px]:pr-2 md:gap-3 origin-bottom md:origin-top will-change-transform transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
           compactNow ? "scale-[0.9] md:scale-[0.96]" : ""
         }`}
       >
@@ -474,8 +494,8 @@ export default function Navbar() {
             )}
           </button>
 
-          {menuOpen && (
-            <div style={{ position: "absolute" }} className="liquid-panel liquid-pop absolute bottom-full right-0 z-50 mb-3 max-h-[70vh] w-[min(18rem,calc(100vw-1rem))] origin-bottom-right overflow-y-auto rounded-2xl p-3 md:bottom-auto md:origin-top-right md:top-full md:mb-0 md:mt-3">
+          {menuMounted && (
+            <div style={{ position: "absolute" }} className={`liquid-panel ${menuOpen ? "liquid-pop" : "pointer-events-none scale-95 opacity-0"} transition-[opacity,scale] duration-200 ease-out motion-reduce:transition-none absolute bottom-full right-0 z-50 mb-3 max-h-[70vh] w-[min(18rem,calc(100vw-1rem))] origin-bottom-right overflow-y-auto rounded-2xl p-3 md:bottom-auto md:origin-top-right md:top-full md:mb-0 md:mt-3`}>
               {/* Logged in: profile settings (picture, name, password) */}
               {authed && (
                 <>

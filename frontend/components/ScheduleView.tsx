@@ -4,14 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { clientLang } from "@/lib/lang";
 import { animeSlug, displayTitle, type ScheduleItem } from "@/lib/types";
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
-const API_ORIGIN = (() => {
-  try {
-    return new URL(API).origin;
-  } catch {
-    return "";
-  }
-})();
+// Same-origin proxy (app/api/proxy/[...path]/route.ts) -> your Django backend.
+// The browser never talks to the backend directly, so CORS and "localhost" can't break it.
+const API = "/api/proxy";
 const VISIBLE = 7;
 const GAP = 12; // px, matches gap-3
 const keyOf = (d: Date) => `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
@@ -47,7 +42,8 @@ function Clock() {
 
   if (!now) return null;
   return (
-    <span className="rounded-full bg-white px-3.5 py-1.5 text-xs font-medium text-black">
+    // Fixed colours (not text-white / bg-white) so the pill stays readable in light mode too.
+    <span className="rounded-full bg-[#f4f4f8] px-3 py-1.5 text-[11px] font-medium text-[#08080d] ring-1 ring-black/10 sm:px-3.5 sm:text-xs">
       ({gmtLabel(now)}) {now.toLocaleDateString("en-GB")} {now.toLocaleTimeString("en-US")}
     </span>
   );
@@ -97,7 +93,7 @@ export default function HomeSchedule() {
     const d = days[selected];
     const k = keyOf(d);
 
-    // FIX: clear any old error first, so switching to an already-loaded day
+    // Clear any old error first, so switching to an already-loaded day
     // doesn't keep showing "Couldn't load this day".
     setError(false);
     if (cache[k]) return;
@@ -135,9 +131,9 @@ export default function HomeSchedule() {
   const isToday = selected === todayIdx;
 
   return (
-    <section className="rounded-xl bg-neutral-900/50 p-5">
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-xl font-medium text-pink-300">Estimated Schedule</h2>
+    <section className="min-w-0 rounded-xl bg-neutral-900/50 p-3 sm:p-5">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2 sm:mb-5 sm:gap-3">
+        <h2 className="text-lg font-medium text-pink-300 sm:text-xl">Estimated Schedule</h2>
         <div className="flex items-center gap-2">
           {!isToday && days.length > 0 && (
             <button
@@ -154,12 +150,12 @@ export default function HomeSchedule() {
         </div>
       </div>
 
-      {/* Day strip: exactly 7 dates visible */}
+      {/* Day strip: exactly 7 dates visible (4 on phones) */}
       <div className="relative mb-4">
         <button
           onClick={() => page(-1)}
           aria-label="Earlier days"
-          className="absolute -left-3 top-1/2 z-10 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full bg-white text-base text-black shadow"
+          className="absolute -left-2 top-1/2 z-10 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full bg-[#f4f4f8] text-base text-[#08080d] shadow ring-1 ring-black/10 sm:-left-3"
         >
           &lsaquo;
         </button>
@@ -173,12 +169,12 @@ export default function HomeSchedule() {
               role="tab"
               aria-selected={selected === i}
               onClick={() => pick(i)}
-              className={`day-tab snap-start rounded-xl px-2 py-3 text-center ${
+              className={`day-tab snap-start rounded-xl px-1 py-2.5 text-center sm:px-2 sm:py-3 ${
                 selected === i ? "bg-pink-300 text-black" : "bg-neutral-800 text-white hover:bg-neutral-700"
               }`}
             >
-              <div className="text-base font-medium">{d.toLocaleDateString("en-US", { weekday: "short" })}</div>
-              <div className={`text-xs font-normal ${selected === i ? "text-black/70" : "text-neutral-400"}`}>
+              <div className="text-sm font-medium sm:text-base">{d.toLocaleDateString("en-US", { weekday: "short" })}</div>
+              <div className={`text-[11px] font-normal sm:text-xs ${selected === i ? "text-black/70" : "text-neutral-400"}`}>
                 {d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
               </div>
             </button>
@@ -187,7 +183,7 @@ export default function HomeSchedule() {
         <button
           onClick={() => page(1)}
           aria-label="Later days"
-          className="absolute -right-3 top-1/2 z-10 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full bg-white text-base text-black shadow"
+          className="absolute -right-2 top-1/2 z-10 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full bg-[#f4f4f8] text-base text-[#08080d] shadow ring-1 ring-black/10 sm:-right-3"
         >
           &rsaquo;
         </button>
@@ -220,25 +216,25 @@ export default function HomeSchedule() {
                   <Link
                     href={href}
                     title={playable ? `Watch episode ${s.episode}` : aired ? "Open details" : "Not aired yet - open details"}
-                    className="group flex items-center gap-4 px-2 py-3 hover:bg-neutral-800/60"
+                    className="group flex items-center gap-3 px-1 py-3 hover:bg-neutral-800/60 sm:gap-4 sm:px-2"
                   >
-                    <span className="w-12 shrink-0 text-base font-normal tabular-nums text-neutral-500">
+                    <span className="w-11 shrink-0 text-sm font-normal tabular-nums text-neutral-500 sm:w-12 sm:text-base">
                       {new Date(s.airingAt * 1000).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
                     </span>
                     <span
-                      className={`min-w-0 flex-1 truncate text-base font-normal group-hover:text-pink-300 ${
+                      className={`min-w-0 flex-1 truncate text-sm font-normal group-hover:text-pink-300 sm:text-base ${
                         aired ? "text-white" : "text-white/60"
                       }`}
                     >
                       {displayTitle(s.media)}
                     </span>
                     <span
-                      className={`flex shrink-0 items-center gap-2 text-xs font-normal ${
+                      className={`flex shrink-0 items-center gap-1.5 text-[11px] font-normal sm:gap-2 sm:text-xs ${
                         playable ? "text-pink-300" : "text-neutral-400"
                       }`}
                     >
                       <span className="text-[9px]">{playable ? "\u25B6" : "\u25F7"}</span>
-                      Episode {s.episode}
+                      Ep {s.episode}
                     </span>
                   </Link>
                 </li>
