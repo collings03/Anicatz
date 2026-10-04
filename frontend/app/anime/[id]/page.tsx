@@ -42,8 +42,15 @@ export default async function AnimePage({ params }: { params: Promise<{ id: stri
 
   return (
     <main style={{ "--accent": accent } as React.CSSProperties} className="relative -mt-24 w-full overflow-x-clip pb-28 md:pb-16">
-      {/* Backdrop. The fades use --page-bg so they follow light/dark mode. */}
-      <div className="absolute inset-x-0 top-0 h-[36rem] overflow-hidden">
+      {/* Backdrop. A mask fades the whole thing to transparent at the bottom, so it melts into the
+          page background (including the aurora glow) in both light and dark mode. */}
+      <div
+        className="absolute inset-x-0 top-0 h-[30rem] overflow-hidden sm:h-[36rem]"
+        style={{
+          WebkitMaskImage: "linear-gradient(to bottom, #000 0%, #000 40%, rgba(0,0,0,0.55) 68%, transparent 100%)",
+          maskImage: "linear-gradient(to bottom, #000 0%, #000 40%, rgba(0,0,0,0.55) 68%, transparent 100%)",
+        }}
+      >
         <Image
           src={anime.bannerImage ?? anime.coverImage.extraLarge}
           alt=""
@@ -52,7 +59,7 @@ export default async function AnimePage({ params }: { params: Promise<{ id: stri
           sizes="100vw"
           className={`object-cover ${anime.bannerImage ? "opacity-50" : "opacity-30 blur-2xl scale-110"}`}
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-[color:var(--page-bg)] via-[color:var(--page-bg)]/70 to-[color:var(--page-bg)]/20" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[color:var(--page-bg)]/60 via-[color:var(--page-bg)]/35 to-[color:var(--page-bg)]/10" />
         <div className="absolute inset-0 bg-gradient-to-r from-[color:var(--page-bg)]/90 via-transparent to-transparent" />
         <div className="absolute -left-20 top-20 h-96 w-96 rounded-full opacity-30 blur-3xl" style={{ background: "var(--accent)" }} />
         {anime.seasonYear && (
