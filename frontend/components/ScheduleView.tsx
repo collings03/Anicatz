@@ -5,6 +5,13 @@ import { clientLang } from "@/lib/lang";
 import { animeSlug, displayTitle, type ScheduleItem } from "@/lib/types";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
+const API_ORIGIN = (() => {
+  try {
+    return new URL(API).origin;
+  } catch {
+    return "";
+  }
+})();
 const VISIBLE = 7;
 const GAP = 12; // px, matches gap-3
 const keyOf = (d: Date) => `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
