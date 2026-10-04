@@ -84,7 +84,9 @@ REST_FRAMEWORK = {
 SIMPLE_JWT = {"ACCESS_TOKEN_LIFETIME": timedelta(hours=1), "REFRESH_TOKEN_LIFETIME": timedelta(days=14)}
 
 CORS_ALLOWED_ORIGINS = [o for o in os.environ.get("CORS_ALLOWED_ORIGINS", "http://localhost:3000").split(",") if o]
-
+CORS_ALLOWED_ORIGINS = [
+    "https://anicatz.vercel.app",
+]
 LANGUAGE_CODE = "en-us"
 TIME_ZONE = "UTC"
 USE_I18N = True
