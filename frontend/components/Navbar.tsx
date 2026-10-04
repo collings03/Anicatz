@@ -38,19 +38,6 @@ const ShuffleIcon = () => (
   </svg>
 );
 
-const SunIcon = () => (
-  <svg className="h-4 w-4" {...svg}>
-    <circle cx="12" cy="12" r="4" />
-    <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
-  </svg>
-);
-
-const MoonIcon = () => (
-  <svg className="h-4 w-4" {...svg}>
-    <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
-  </svg>
-);
-
 const CalendarIcon = () => (
   <svg className="h-5 w-5" {...svg}>
     <rect x="3" y="4" width="18" height="18" rx="2" />
@@ -128,9 +115,10 @@ export default function Navbar() {
     };
   }, []);
 
-  // Mobile: shrink the bottom bar slightly while scrolling down; restore on scroll up or at the top.
-  // Needs a real run of scrolling in one direction before it changes, so small jitters
-  // (momentum scroll, the phone's address bar moving, rubber-band bounce) never toggle it.
+  // Scrolling down: shrink the bar slightly. Scrolling up (or back at the top): full size.
+  // Smoothness: reads happen once per frame, a run of scrolling in one direction must build up
+  // a little distance before it flips (so it never flutters), and shrinking is a bit more
+  // patient than restoring.
   useEffect(() => {
     let anchorY = window.scrollY; // where the current run of scrolling started
     let dir = 0; // 1 = down, -1 = up
@@ -156,8 +144,8 @@ export default function Navbar() {
           return;
         }
         const dist = Math.abs(y - anchorY);
-        if (dir === 1 && dist > 28) setCompact(true);
-        if (dir === -1 && dist > 14) setCompact(false);
+        if (dir === 1 && dist > 16) setCompact(true);
+        if (dir === -1 && dist > 8) setCompact(false);
       });
     };
     window.addEventListener("scroll", onScroll, { passive: true });
@@ -270,8 +258,8 @@ export default function Navbar() {
   const bar = (
     <header style={{ position: "fixed", left: 0, right: 0, zIndex: 9999 }} className="fixed inset-x-0 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-50 w-full max-w-[100vw] px-2 min-[400px]:px-3 md:bottom-auto md:top-3">
       <nav
-        className={`liquid-nav mx-auto relative flex w-full min-w-0 max-w-6xl items-center gap-1.5 rounded-full py-1.5 pl-2 pr-1.5 min-[400px]:gap-2 min-[400px]:py-2 min-[400px]:pl-3 min-[400px]:pr-2 md:gap-3 origin-bottom transition-transform duration-300 ease-out motion-reduce:transition-none ${
-          compactNow ? "scale-[0.86] md:scale-100" : ""
+        className={`liquid-nav mx-auto relative flex w-full min-w-0 max-w-6xl items-center gap-1.5 rounded-full py-1.5 pl-2 pr-1.5 min-[400px]:gap-2 min-[400px]:py-2 min-[400px]:pl-3 min-[400px]:pr-2 md:gap-3 origin-bottom md:origin-top will-change-transform transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
+          compactNow ? "scale-[0.9] md:scale-[0.96]" : ""
         }`}
       >
         {/* Logo: Home icon on mobile, logo on desktop */}
@@ -330,7 +318,7 @@ export default function Navbar() {
           </form>
 
           {showDropdown && (
-            <div className="liquid-panel absolute bottom-full left-0 right-0 z-50 mb-2 max-h-[70vh] overflow-y-auto rounded-2xl md:bottom-auto md:top-full md:mb-0 md:mt-2">
+            <div style={{ position: "absolute" }} className="liquid-panel liquid-pop absolute bottom-full left-0 right-0 z-50 mb-2 max-h-[70vh] origin-bottom overflow-y-auto rounded-2xl md:bottom-auto md:origin-top md:top-full md:mb-0 md:mt-2">
               {showFilters && (
                 <div className="grid gap-3 p-4 sm:grid-cols-2">
                   <select aria-label="Genre" value={filter.genre} onChange={(e) => setFilter({ ...filter, genre: e.target.value })} className={selectCls}>
@@ -422,17 +410,6 @@ export default function Navbar() {
             </div>
           </div>
 
-          {/* Light / dark mode (logged out; logged in uses Profile settings) */}
-          {!authed && (
-            <button
-              onClick={toggleTheme}
-              aria-label={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
-              className="ml-1 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/10 text-white/80 transition-colors hover:bg-white/20"
-            >
-              {theme === "light" ? <MoonIcon /> : <SunIcon />}
-            </button>
-          )}
-
           {/* Login button, next to the language toggle (only when logged out) */}
           {mounted && !loggedIn && (
             <Link
@@ -479,7 +456,7 @@ export default function Navbar() {
           </button>
 
           {menuOpen && (
-            <div className="liquid-panel absolute bottom-full right-0 z-50 mb-3 max-h-[70vh] w-[min(18rem,calc(100vw-1rem))] overflow-y-auto rounded-2xl bg-[#0e0e16]/95 p-3 shadow-2xl md:bottom-auto md:top-full md:mb-0 md:mt-3">
+            <div style={{ position: "absolute" }} className="liquid-panel liquid-pop absolute bottom-full right-0 z-50 mb-3 max-h-[70vh] w-[min(18rem,calc(100vw-1rem))] origin-bottom-right overflow-y-auto rounded-2xl p-3 md:bottom-auto md:origin-top-right md:top-full md:mb-0 md:mt-3">
               {/* Logged in: profile settings (picture, name, password) */}
               {authed && <ProfileSettings profile={profile} onUpdate={setProfile} theme={theme} onToggleTheme={toggleTheme} />}
 
@@ -515,20 +492,6 @@ export default function Navbar() {
                   </div>
                 </div>
               </div>
-
-              {/* Theme toggle: in the bar on desktop; logged in users use Profile settings */}
-              {!authed && (
-                <div className="flex items-center justify-between px-3 py-2 md:hidden">
-                  <span className="text-sm text-white/80">{theme === "light" ? "Light mode" : "Dark mode"}</span>
-                  <button
-                    onClick={toggleTheme}
-                    aria-label={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
-                    className="grid h-8 w-8 place-items-center rounded-full bg-white/10 text-white/80 hover:bg-white/20"
-                  >
-                    {theme === "light" ? <MoonIcon /> : <SunIcon />}
-                  </button>
-                </div>
-              )}
 
               <p className="mb-2 mt-3 px-3 text-[11px] font-semibold uppercase tracking-wider text-white/40">Genres</p>
               <div className="grid grid-cols-2 gap-1.5 px-1">

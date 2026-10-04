@@ -283,7 +283,149 @@ main {
   mask-composite: exclude;
 }
 
-/* round buttons inside the bar */
+/* ---------- Liquid glass (iOS 26 / WhatsApp style) ----------
+   Replace the old liquid-glass block in app/globals.css with this whole file.
+
+   Two fixes vs the last version:
+   1. .liquid-panel no longer sets position:relative. That was overriding Tailwind's
+      "absolute", so opening the menu pushed the bar open instead of floating over the page.
+   2. The bar's blur now lives on ::before, not on .liquid-nav itself. An element with
+      backdrop-filter stops its children from blurring the page, so the dropdowns
+      could never go see-through. Now they can. */
+
+/* ===== Bar ===== */
+.liquid-nav {
+  position: relative;
+  isolation: isolate;
+  background: linear-gradient(135deg, rgba(255,255,255,.14) 0%, rgba(255,255,255,.04) 45%, rgba(255,255,255,.10) 100%);
+  border: 1px solid rgba(255,255,255,.14);
+  box-shadow:
+    inset 0 1.5px 0 rgba(255,255,255,.55),
+    inset 0 -1px 0 rgba(255,255,255,.12),
+    inset 1px 0 0 rgba(255,255,255,.18),
+    inset -1px 0 0 rgba(255,255,255,.18),
+    inset 0 0 22px rgba(255,255,255,.07),
+    0 12px 40px rgba(0,0,0,.45),
+    0 2px 6px rgba(0,0,0,.25);
+}
+
+/* blur + glossy highlights */
+.liquid-nav::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: -1;
+  -webkit-backdrop-filter: blur(22px) saturate(190%) brightness(1.08);
+  backdrop-filter: blur(22px) saturate(190%) brightness(1.08);
+  background:
+    radial-gradient(120% 90% at 20% -20%, rgba(255,255,255,.30) 0%, rgba(255,255,255,0) 55%),
+    radial-gradient(80% 60% at 90% 120%, rgba(124,92,255,.18) 0%, rgba(124,92,255,0) 60%);
+}
+
+/* thin bright rim light */
+.liquid-nav::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  pointer-events: none;
+  background: linear-gradient(160deg, rgba(255,255,255,.75), rgba(255,255,255,.05) 35%, rgba(255,255,255,.05) 65%, rgba(255,255,255,.5));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+/* ---------- Liquid glass (iOS 26 / WhatsApp style) ----------
+   Replace the old liquid-glass block in app/globals.css with this whole file.
+
+   Two fixes vs the last version:
+   1. .liquid-panel no longer sets position:relative. That was overriding Tailwind's
+      "absolute", so opening the menu pushed the bar open instead of floating over the page.
+   2. The bar's blur now lives on ::before, not on .liquid-nav itself. An element with
+      backdrop-filter stops its children from blurring the page, so the dropdowns
+      could never go see-through. Now they can. */
+
+/* ===== Bar ===== */
+.liquid-nav {
+  position: relative;
+  isolation: isolate;
+  background: linear-gradient(135deg, rgba(255,255,255,.14) 0%, rgba(255,255,255,.04) 45%, rgba(255,255,255,.10) 100%);
+  border: 1px solid rgba(255,255,255,.14);
+  box-shadow:
+    inset 0 1.5px 0 rgba(255,255,255,.55),
+    inset 0 -1px 0 rgba(255,255,255,.12),
+    inset 1px 0 0 rgba(255,255,255,.18),
+    inset -1px 0 0 rgba(255,255,255,.18),
+    inset 0 0 22px rgba(255,255,255,.07),
+    0 12px 40px rgba(0,0,0,.45),
+    0 2px 6px rgba(0,0,0,.25);
+}
+
+/* blur + glossy highlights */
+.liquid-nav::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: -1;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backdrop-filter: blur(22px) saturate(190%) brightness(1.08);
+  backdrop-filter: blur(22px) saturate(190%) brightness(1.08);
+  background:
+    radial-gradient(120% 90% at 20% -20%, rgba(255,255,255,.30) 0%, rgba(255,255,255,0) 55%),
+    radial-gradient(80% 60% at 90% 120%, rgba(124,92,255,.18) 0%, rgba(124,92,255,0) 60%);
+}
+
+/* thin bright rim light */
+.liquid-nav::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  pointer-events: none;
+  background: linear-gradient(160deg, rgba(255,255,255,.75), rgba(255,255,255,.05) 35%, rgba(255,255,255,.05) 65%, rgba(255,255,255,.5));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+/* ===== Dropdown panels (search + menu) ===== */
+.liquid-panel {
+  /* no position here: Tailwind's "absolute" must win */
+  background: linear-gradient(135deg, rgba(255,255,255,.14), rgba(255,255,255,.04)), rgba(14,14,22,.55);
+  -webkit-backdrop-filter: blur(24px) saturate(190%);
+  backdrop-filter: blur(24px) saturate(190%);
+  border: 1px solid rgba(255,255,255,.14);
+  box-shadow:
+    inset 0 1.5px 0 rgba(255,255,255,.5),
+    inset 0 -1px 0 rgba(255,255,255,.1),
+    inset 0 0 20px rgba(255,255,255,.05),
+    0 16px 48px rgba(0,0,0,.45);
+}
+
+/* Laptop / desktop: much more see-through */
+@media (min-width: 768px) {
+  .liquid-panel {
+    background: linear-gradient(135deg, rgba(255,255,255,.12), rgba(255,255,255,.02)), rgba(14,14,22,.22);
+    -webkit-backdrop-filter: blur(20px) saturate(170%);
+    backdrop-filter: blur(20px) saturate(170%);
+  }
+}
+
+/* Pop-open animation (transform only, so the blur never flickers) */
+@keyframes liquid-pop {
+  from { transform: scale(.92); }
+  to   { transform: scale(1); }
+}
+.liquid-pop { animation: liquid-pop .22s cubic-bezier(.3,1.3,.5,1); }
+
+/* ===== Round buttons ===== */
 .liquid-btn {
   background: linear-gradient(160deg, rgba(255,255,255,.22), rgba(255,255,255,.06));
   color: #fff;
@@ -296,7 +438,6 @@ main {
 .liquid-btn:hover { background: linear-gradient(160deg, rgba(255,255,255,.3), rgba(255,255,255,.1)); }
 .liquid-btn:active { transform: scale(.88); }
 
-/* selected state: glowing teal glass */
 .liquid-btn-active {
   background: linear-gradient(160deg, #5eead4, #14b8a6);
   color: #04201c;
@@ -309,22 +450,47 @@ main {
 }
 .liquid-btn-active:active { transform: scale(.88); }
 
-/* light theme */
-:root[data-theme="light"] .liquid-nav,
-:root[data-theme="light"] .liquid-panel {
+/* ===== Light theme ===== */
+:root[data-theme="light"] .liquid-nav {
   background: linear-gradient(135deg, rgba(255,255,255,.7), rgba(255,255,255,.35));
   border-color: rgba(255,255,255,.7);
-  box-shadow:
-    inset 0 1.5px 0 rgba(255,255,255,.95),
-    inset 0 -1px 0 rgba(0,0,0,.05),
-    0 12px 36px rgba(20,20,40,.18);
+  box-shadow: inset 0 1.5px 0 rgba(255,255,255,.95), inset 0 -1px 0 rgba(0,0,0,.05), 0 12px 36px rgba(20,20,40,.18);
 }
-:root[data-theme="light"] .liquid-panel { background-color: rgba(255,255,255,.7); }
-:root[data-theme="light"] .liquid-btn { color: #111; background: linear-gradient(160deg, rgba(255,255,255,.9), rgba(255,255,255,.45)); }
+:root[data-theme="light"] .liquid-panel {
+  background: linear-gradient(135deg, rgba(255,255,255,.7), rgba(255,255,255,.4)), rgba(255,255,255,.3);
+  border-color: rgba(255,255,255,.7);
+  box-shadow: inset 0 1.5px 0 rgba(255,255,255,.95), 0 16px 40px rgba(20,20,40,.18);
+}
+:root[data-theme="light"] .liquid-btn {
+  color: #111;
+  background: linear-gradient(160deg, rgba(255,255,255,.9), rgba(255,255,255,.45));
+}
+
+/* ===== Window / laptop mode: clearer glass, cheaper to draw (less flicker) =====
+   Lower blur radius + no brightness filter + lighter shadows = far less GPU work
+   every time the bar scales or the hero behind it changes. */
+@media (min-width: 768px) {
+  .liquid-nav {
+    background: linear-gradient(135deg, rgba(255,255,255,.07) 0%, rgba(255,255,255,.015) 50%, rgba(255,255,255,.05) 100%);
+    border-color: rgba(255,255,255,.10);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.40),
+      inset 0 -1px 0 rgba(255,255,255,.08),
+      inset 0 0 14px rgba(255,255,255,.04),
+      0 8px 24px rgba(0,0,0,.30);
+  }
+  .liquid-nav::before {
+    -webkit-backdrop-filter: blur(14px) saturate(150%);
+    backdrop-filter: blur(14px) saturate(150%);
+    background: radial-gradient(120% 90% at 20% -20%, rgba(255,255,255,.12) 0%, rgba(255,255,255,0) 55%);
+  }
+  .liquid-nav::after { opacity: .6; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .liquid-btn, .liquid-btn-active { transition: none; }
+  .liquid-pop { animation: none; }
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .liquid-nav, .liquid-panel { background-color: rgba(20,20,30,.92); }
+  .liquid-nav, .liquid-panel { background: rgba(20,20,30,.92); }
 }
