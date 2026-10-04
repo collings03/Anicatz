@@ -18,10 +18,17 @@ SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-insecure-change-me")
 DEBUG = os.environ.get("DJANGO_DEBUG", "1") == "1"
 
 # Hostnames only: NO ports and NO https://. These are the hosts THIS Django server answers to.
-# Add your deployed backend's hostname via DJANGO_ALLOWED_HOSTS (e.g. "api.example.com").
+# The backend is deployed on Vercel at anicatz-7v6u.vercel.app, so that host MUST be listed.
+# ".vercel.app" (leading dot) also allows Vercel's per-deployment preview URLs such as
+# anicatz-7v6u-xxxx-yourteam.vercel.app. Extra hosts can be added via DJANGO_ALLOWED_HOSTS.
 ALLOWED_HOSTS = sorted(
     set(
-        ["localhost", "127.0.0.1"]
+        [
+            "localhost",
+            "127.0.0.1",
+            "anicatz-7v6u.vercel.app",
+            ".vercel.app",
+        ]
         + env_list("DJANGO_ALLOWED_HOSTS")
     )
 )
