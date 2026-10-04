@@ -77,15 +77,19 @@ export default function ProfileSettings({
   onUpdate,
   theme,
   onToggleTheme,
+  page = false,
 }: {
   profile: Profile | null;
   onUpdate: (p: Profile) => void;
   theme: "dark" | "light";
   onToggleTheme: () => void;
+  /** true = full-page mode (used by /profile): always expanded, no accordion header, no card wrapper. */
+  page?: boolean;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [open, setOpen] = useState(false);
+  const expanded = page || open;
   const [name, setName] = useState(profile?.username ?? "");
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -166,24 +170,26 @@ export default function ProfileSettings({
   const shownName = profile?.username ?? "A";
 
   return (
-    <div className="mb-3 rounded-2xl bg-white/5 p-2">
-      {/* Header row: always visible, click to expand the settings */}
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-3 rounded-xl p-1 text-left hover:bg-white/5"
-      >
-        <Avatar src={absUrl(profile?.avatar ?? null)} name={shownName} className="h-11 w-11 shrink-0 rounded-full text-lg" />
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-semibold">{profile?.username ?? "Your profile"}</span>
-          <span className="block truncate text-xs text-white/50">Profile settings</span>
-        </span>
-        <ChevronIcon open={open} />
-      </button>
+    <div className={page ? "" : "mb-3 rounded-2xl bg-white/5 p-2"}>
+      {/* Header row (dropdown mode only): click to expand the settings */}
+      {!page && (
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+          className="flex w-full items-center gap-3 rounded-xl p-1 text-left hover:bg-white/5"
+        >
+          <Avatar src={absUrl(profile?.avatar ?? null)} name={shownName} className="h-11 w-11 shrink-0 rounded-full text-lg" />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-semibold">{profile?.username ?? "Your profile"}</span>
+            <span className="block truncate text-xs text-white/50">Profile settings</span>
+          </span>
+          <ChevronIcon open={open} />
+        </button>
+      )}
 
-      {open && (
-        <div className="px-1 pb-1 pt-3">
+      {expanded && (
+        <div className={page ? "" : "px-1 pb-1 pt-3"}>
           {/* Picture */}
           <div className="flex items-center gap-4">
             <div className="relative h-16 w-16 shrink-0">

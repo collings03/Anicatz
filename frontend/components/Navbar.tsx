@@ -60,6 +60,12 @@ const HomeIcon = () => (
   </svg>
 );
 
+const ChevronRightIcon = () => (
+  <svg className="h-4 w-4 shrink-0 text-white/60" {...svg}>
+    <path d="m9 18 6-6-6-6" />
+  </svg>
+);
+
 const FilterIcon = () => (
   <svg className="h-4 w-4" {...svg}>
     <path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h12M20 18h0" />
@@ -94,6 +100,18 @@ export default function Navbar() {
   const searchBox = useRef<HTMLDivElement>(null);
   const menuBox = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Stay in sync with changes made on the /profile page.
+  useEffect(() => {
+    const onTheme = () => setTheme(document.documentElement.dataset.theme === "light" ? "light" : "dark");
+    const onProfile = (e: Event) => setProfile((e as CustomEvent<Profile>).detail);
+    window.addEventListener("anicatz-theme", onTheme);
+    window.addEventListener("anicatz-profile", onProfile);
+    return () => {
+      window.removeEventListener("anicatz-theme", onTheme);
+      window.removeEventListener("anicatz-profile", onProfile);
+    };
+  }, []);
 
   // Close everything after navigating.
   useEffect(() => {
@@ -216,6 +234,7 @@ export default function Navbar() {
     try {
       localStorage.setItem("theme", next);
     } catch {}
+    window.dispatchEvent(new Event("anicatz-theme"));
   };
 
   const applyFilter = () => {
@@ -458,7 +477,23 @@ export default function Navbar() {
           {menuOpen && (
             <div style={{ position: "absolute" }} className="liquid-panel liquid-pop absolute bottom-full right-0 z-50 mb-3 max-h-[70vh] w-[min(18rem,calc(100vw-1rem))] origin-bottom-right overflow-y-auto rounded-2xl p-3 md:bottom-auto md:origin-top-right md:top-full md:mb-0 md:mt-3">
               {/* Logged in: profile settings (picture, name, password) */}
-              {authed && <ProfileSettings profile={profile} onUpdate={setProfile} theme={theme} onToggleTheme={toggleTheme} />}
+              {authed && (
+                <>
+                  {/* Mobile: opens the full Profile page */}
+                  <Link href="/profile" className="mb-3 flex items-center gap-3 rounded-2xl bg-white/5 p-2 hover:bg-white/10 md:hidden">
+                    <Avatar src={absUrl(profile?.avatar ?? null)} name={profile?.username ?? "A"} className="h-11 w-11 shrink-0 rounded-full text-lg" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold">{profile?.username ?? "Your profile"}</span>
+                      <span className="block truncate text-xs text-white/50">Profile settings</span>
+                    </span>
+                    <ChevronRightIcon />
+                  </Link>
+                  {/* Desktop: settings expand inside the dropdown */}
+                  <div className="hidden md:block">
+                    <ProfileSettings profile={profile} onUpdate={setProfile} theme={theme} onToggleTheme={toggleTheme} />
+                  </div>
+                </>
+              )}
 
               {/* Home + Random live in the bar on desktop, so only show them here on small screens */}
               <Link href="/" className={`${item("/")} md:hidden`}>Home</Link>
