@@ -301,8 +301,8 @@ export default function Navbar() {
           compactNow ? "scale-[0.9] md:scale-[0.96]" : ""
         }`}
       >
-        {/* Logo: Home icon on mobile, logo on desktop */}
-        <Link href="/" aria-label="Home" className="flex shrink-0 items-center gap-2">
+        {/* Logo: Home icon on mobile, anicatz wordmark on desktop */}
+        <Link href="/" aria-label="anicatz home" className="flex shrink-0 items-center gap-2">
           {/* Mobile: home icon circle */}
           <span
             className={`grid h-9 w-9 place-items-center rounded-full transition-colors min-[400px]:h-10 min-[400px]:w-10 md:hidden ${
@@ -312,12 +312,24 @@ export default function Navbar() {
             <HomeIcon />
           </span>
 
-          {/* Desktop: original logo */}
-          <span className="hidden h-9 w-9 place-items-center rounded-full bg-gradient-to-br from-[#c8ff3d] to-[#7c5cff] font-display text-lg font-black text-black md:grid">
-            A
-          </span>
-          <span className="hidden font-display text-xl font-bold tracking-tight md:block">
-            ani<span className="text-teal-400">catz</span>
+          {/* Desktop: the anicatz logo. Dark theme gets the white "ani", light theme the navy "ani". */}
+          <span className="hidden md:block">
+            <Image
+              src="/anicatz-logo.png"
+              alt="anicatz"
+              width={640}
+              height={147}
+              priority
+              className="h-7 w-auto [[data-theme=light]_&]:hidden"
+            />
+            <Image
+              src="/anicatz-logo-light.png"
+              alt="anicatz"
+              width={640}
+              height={147}
+              priority
+              className="hidden h-7 w-auto [[data-theme=light]_&]:block"
+            />
           </span>
         </Link>
 
@@ -473,11 +485,27 @@ export default function Navbar() {
 
         {/* Profile / menu button */}
         <div ref={menuBox} className="relative shrink-0">
+          {/* Phones: the round opens the full Menu page */}
+          <Link
+            href="/menu"
+            aria-label={authed ? "Profile and menu" : "Menu"}
+            className={`grid h-9 w-9 min-[400px]:h-10 min-[400px]:w-10 shrink-0 place-items-center overflow-hidden rounded-full transition-colors md:hidden ${
+              pathname === "/menu" || pathname === "/profile" ? "liquid-btn-active" : "liquid-btn"
+            }`}
+          >
+            {authed ? (
+              <Avatar src={absUrl(profile?.avatar ?? null)} name={profile?.username ?? "A"} className="h-full w-full text-base" />
+            ) : (
+              <UserIcon />
+            )}
+          </Link>
+
+          {/* Desktop: avatar / dots button that opens the dropdown */}
           <button
             aria-label={authed ? "Profile and menu" : "Menu"}
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen((v) => !v)}
-            className={`grid h-9 w-9 min-[400px]:h-10 min-[400px]:w-10 place-items-center overflow-hidden rounded-full transition-colors ${
+            className={`grid h-9 w-9 min-[400px]:h-10 min-[400px]:w-10 place-items-center overflow-hidden rounded-full transition-colors max-md:hidden ${
               menuOpen ? "liquid-btn-active" : "liquid-btn"
             } ${authed ? `md:ring-2 ${menuOpen ? "md:ring-teal-400" : "md:ring-white/10 md:hover:ring-white/30"}` : ""}`}
           >
@@ -576,6 +604,35 @@ export default function Navbar() {
     </header>
   );
 
+  // Phones only: the anicatz logo stays pinned at the top-left of every page, with no background.
+  // It floats over the page (portaled to <body>), so the hero section can start at the very top.
+  const mobileLogo = (
+    <Link
+      href="/"
+      aria-label="anicatz home"
+      style={{ position: "fixed", zIndex: 9998 }}
+      className="fixed left-4 top-[calc(0.75rem+env(safe-area-inset-top))] z-[9998] block md:hidden"
+    >
+      <Image
+        src="/anicatz-logo.png"
+        alt="anicatz"
+        width={640}
+        height={147}
+        priority
+        className="h-5 w-auto drop-shadow-[0_1px_6px_rgba(0,0,0,0.55)] [[data-theme=light]_&]:hidden"
+      />
+      <Image
+        src="/anicatz-logo-light.png"
+        alt="anicatz"
+        width={640}
+        height={147}
+        priority
+        className="hidden h-5 w-auto [[data-theme=light]_&]:block"
+      />
+    </Link>
+  );
   // Portal to <body>: position:fixed is then always relative to the screen.
-  return mounted ? createPortal(bar, document.body) : bar;
+  return (
+    mounted ? createPortal(<>{mobileLogo}{bar}</>, document.body) : bar
+  );
 }

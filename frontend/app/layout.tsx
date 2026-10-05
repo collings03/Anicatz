@@ -17,10 +17,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${inter.variable} ${grotesk.variable}`}>
       <body id="top" className="flex min-h-screen flex-col font-sans antialiased">
         <Navbar />
-        <div className="flex-1 pt-24">{children}</div>
+        {/* md:pt-24 clears the fixed top navbar on desktop. On phones the navbar is at the bottom, so no top padding. */}
+        <div className="flex-1 md:pt-24">{children}</div>
         <Footer />
       </body>
     </html>
   );
 }
-
