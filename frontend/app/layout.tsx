@@ -24,3 +24,45 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     </html>
   );
 }
+
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  metadataBase: new URL("https://anicatz.vercel.app"),
+
+  title: {
+    default: "AniCatz - Anime Database & Discovery",
+    template: "%s | AniCatz",
+  },
+
+  description:
+    "Discover anime, browse popular and trending series, explore genres, schedules, and detailed anime information on AniCatz.",
+
+  keywords: [
+    "anime",
+    "anime database",
+    "anime list",
+    "anime search",
+    "anime schedule",
+    "anime genres",
+    "AniCatz",
+  ],
+
+  alternates: {
+    canonical: "https://anicatz.vercel.app",
+  },
+
+  robots: {
+    index: true,
+    follow: true,
+  },
+
+  openGraph: {
+    title: "AniCatz - Anime Database & Discovery",
+    description:
+      "Discover anime, explore genres, popular series, schedules and detailed anime information.",
+    url: "https://anicatz.vercel.app",
+    siteName: "AniCatz",
+    type: "website",
+  },
+};
