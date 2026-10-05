@@ -20,8 +20,15 @@ export default async function BrowsePage({
   const data = await getBrowse({ ...cfg.params, page: n, per_page: 30 });
 
   return (
-    <main className="w-full px-6 py-8">
-      <h1 className="mb-6 text-3xl font-bold">{cfg.title}</h1>
+    // Phones: pt-14 clears the pinned logo, pb-32 clears the bottom navbar.
+    // Desktop: the layout already clears the top navbar, so only a small pt-4 is needed.
+    <main className="w-full px-3 pb-32 pt-14 sm:px-6 md:pb-12 md:pt-4">
+      {/* Title on the left, category switcher (Top Airing, Most Popular, ...) on the right */}
+      <div className="mb-4 flex items-center justify-between gap-3 sm:mb-6">
+        <h1 className="min-w-0 truncate text-2xl font-bold sm:text-3xl">{cfg.title}</h1>
+        
+      </div>
+
       <AnimeGrid items={data.media} />
       <Pagination basePath={`/browse/${category}`} page={n} hasNext={data.pageInfo.hasNextPage} />
     </main>

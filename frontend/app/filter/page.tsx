@@ -28,12 +28,28 @@ export default async function FilterPage({
     FORMAT_OPTIONS.find((o) => o.value === format)?.label,
     STATUS_OPTIONS.find((o) => o.value === status)?.label,
     SORT_OPTIONS.find((o) => o.value === sort)?.label,
-  ].filter(Boolean);
+  ].filter(Boolean) as string[];
 
   return (
-    <main className="w-full px-6 py-8">
-      <h1 className="mb-2 text-3xl font-bold">Filtered results</h1>
-      <p className="mb-6 text-sm text-neutral-400">{tags.join(" • ")}</p>
+    // Phones: pt-14 clears the pinned logo, pb-32 clears the bottom navbar.
+    // Desktop: the layout already clears the top navbar, so only a small pt-4 is needed.
+    <main className="w-full px-3 pb-32 pt-14 sm:px-6 md:pb-12 md:pt-4">
+      <h1 className="text-2xl font-bold sm:text-3xl">Filtered results</h1>
+
+      {/* Active filters as small chips that wrap instead of one long line */}
+      {tags.length > 0 && (
+        <div className="mb-4 mt-2 flex flex-wrap gap-1.5 sm:mb-6">
+          {tags.map((t, i) => (
+            <span
+              key={`${t}-${i}`}
+              className="rounded-full bg-white/5 px-2.5 py-1 text-[11px] text-white/70 ring-1 ring-white/10 sm:text-xs"
+            >
+              {t}
+            </span>
+          ))}
+        </div>
+      )}
+
       <AnimeGrid items={data.media} />
       <Pagination basePath={`/filter?${qs}`} page={page} hasNext={data.pageInfo.hasNextPage} />
     </main>

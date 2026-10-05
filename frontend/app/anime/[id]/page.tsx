@@ -41,7 +41,9 @@ export default async function AnimePage({ params }: { params: Promise<{ id: stri
   ];
 
   return (
-    <main style={{ "--accent": accent } as React.CSSProperties} className="relative -mt-24 w-full overflow-x-clip pb-28 md:pb-16">
+    // md:-mt-24 cancels the layout's desktop top padding so the backdrop reaches the top edge.
+    // On phones the layout has no top padding, so no negative margin is needed.
+    <main style={{ "--accent": accent } as React.CSSProperties} className="relative w-full overflow-x-clip pb-28 md:-mt-24 md:pb-16">
       {/* Backdrop. A mask fades the whole thing to transparent at the bottom, so it melts into the
           page background (including the aurora glow) in both light and dark mode. */}
       <div
@@ -73,7 +75,9 @@ export default async function AnimePage({ params }: { params: Promise<{ id: stri
         )}
       </div>
 
-      <div className="relative px-4 pt-10 sm:px-6 md:pt-24 lg:pt-28">
+      {/* pt-12 on phones puts the breadcrumb just below the pinned logo (about 16px gap).
+          Use pt-10 for even closer, pt-14 for roomier. */}
+      <div className="relative px-4 pt-12 sm:px-6 md:pt-24 lg:pt-28">
         {/* Breadcrumb */}
         <nav className="mb-5 flex min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap text-xs text-white/50 sm:mb-6">
           <Link href="/" className="hover:text-teal-400">Home</Link>
