@@ -1,7 +1,10 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const BASE = process.env.NEXT_PUBLIC_VIDEO_PROVIDER_BASE_URL ?? "https://zokoanime.video";
+// zokoanime.video shows "EMBED BLOCKED" when it runs inside a sandboxed iframe, so popup protection
+// is OFF by default. Set NEXT_PUBLIC_PLAYER_SANDBOX=1 only if you switch to a provider that allows it.
+const SANDBOX_SUPPORTED = process.env.NEXT_PUBLIC_PLAYER_SANDBOX === "1";
 const TRACKS = ["sub", "hsub", "dub"] as const;
 type Track = (typeof TRACKS)[number];
 
@@ -16,13 +19,15 @@ type Props = {
 
 export default function ZokoPlayer({ malId, episode, totalEpisodes, onEpisodeChange, color = "35d5bf" }: Props) {
   const ref = useRef<HTMLIFrameElement>(null);
+  const box = useRef<HTMLDivElement>(null);
   const [track, setTrack] = useState<Track>("sub");
   const [failed, setFailed] = useState(false);
-  // Popup protection: the sandbox below stops the embed from opening new tabs or redirecting
-  // the page. Viewers can turn it off if a provider refuses to play inside a sandbox.
-  const [protectedMode, setProtectedMode] = useState(true);
+  const [protectedMode, setProtectedMode] = useState(SANDBOX_SUPPORTED);
   // Bumped by "Retry" so the iframe actually reloads.
   const [reload, setReload] = useState(0);
+  // Full-screen fallback: some phones (iPhone Safari especially) refuse real fullscreen for an iframe,
+  // so we stretch the player over the whole screen ourselves, above the navbar and the pinned logo.
+  const [expanded, setExpanded] = useState(false);
 
   const src = useMemo(
     () => `${BASE}/stream/mal/${malId}/${episode}/${track}?color=${color.replace("#", "")}`,
@@ -33,7 +38,6 @@ export default function ZokoPlayer({ malId, episode, totalEpisodes, onEpisodeCha
 
   // Provider posts progress / complete / error. Payload shape is not publicly
   // documented, so read the event name defensively.
-  // Note: the sandbox keeps allow-same-origin, so e.origin still matches and this check keeps working.
   useEffect(() => {
     const origin = new URL(BASE).origin;
     function onMessage(e: MessageEvent) {
@@ -50,6 +54,37 @@ export default function ZokoPlayer({ malId, episode, totalEpisodes, onEpisodeCha
     return () => window.removeEventListener("message", onMessage);
   }, [episode, totalEpisodes, onEpisodeChange]);
 
+  // While expanded: lock page scroll and let Esc close it.
+  useEffect(() => {
+    if (!expanded) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setExpanded(false);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [expanded]);
+
+  const toggleFullscreen = useCallback(async () => {
+    if (expanded) return setExpanded(false);
+    if (document.fullscreenElement) return void document.exitFullscreen();
+    const el = box.current as (HTMLDivElement & { webkitRequestFullscreen?: () => void }) | null;
+    try {
+      if (el?.requestFullscreen) {
+        await el.requestFullscreen();
+        // Best effort: turn the phone sideways. Not supported everywhere, so ignore failures.
+        try {
+          await (screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> }).lock?.("landscape");
+        } catch {}
+        return;
+      }
+      if (el?.webkitRequestFullscreen) return void el.webkitRequestFullscreen();
+    } catch {}
+    setExpanded(true); // real fullscreen not available: use the full-screen overlay instead
+  }, [expanded]);
+
   const retry = () => {
     setFailed(false);
     setReload((n) => n + 1);
@@ -62,19 +97,34 @@ export default function ZokoPlayer({ malId, episode, totalEpisodes, onEpisodeCha
 
   return (
     <div>
-      <div className="relative aspect-video overflow-hidden rounded-lg bg-black">
+      <div
+        ref={box}
+        className={
+          expanded
+            ? "fixed inset-0 z-[10001] h-[100dvh] w-screen overflow-hidden bg-black"
+            : "relative aspect-video overflow-hidden rounded-lg bg-black"
+        }
+      >
         <iframe
           key={`${src}|${protectedMode ? "safe" : "open"}|${reload}`}
           ref={ref}
           src={src}
           title={`Episode ${episode}`}
-          allow="fullscreen; autoplay; picture-in-picture"
+          allow="fullscreen *; autoplay; picture-in-picture; encrypted-media"
           allowFullScreen
-          // No allow-popups and no allow-top-navigation: the embed can't open new tabs
-          // or send the visitor to another site.
           sandbox={protectedMode ? "allow-scripts allow-same-origin allow-presentation allow-forms" : undefined}
           className="absolute inset-0 h-full w-full border-0"
         />
+        {expanded && (
+          <button
+            type="button"
+            onClick={() => setExpanded(false)}
+            aria-label="Exit full screen"
+            className="absolute right-3 top-[calc(0.75rem+env(safe-area-inset-top))] z-10 rounded-full bg-black/70 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/20"
+          >
+            Close
+          </button>
+        )}
         {failed && (
           <div className="absolute inset-x-0 bottom-0 bg-black/80 p-3 text-sm text-white">
             This episode didn&apos;t load.{" "}
@@ -106,6 +156,14 @@ export default function ZokoPlayer({ malId, episode, totalEpisodes, onEpisodeCha
         >
           Next
         </button>
+        <button
+          type="button"
+          onClick={toggleFullscreen}
+          aria-label="Full screen"
+          className="rounded border border-neutral-600 px-3 py-1.5"
+        >
+          Full screen
+        </button>
         <div className="ml-auto flex gap-1" role="group" aria-label="Audio and subtitle track">
           {TRACKS.map((t) => (
             <button
@@ -120,21 +178,22 @@ export default function ZokoPlayer({ malId, episode, totalEpisodes, onEpisodeCha
         </div>
       </div>
 
-      {protectedMode ? (
-        <p className="mt-2 text-xs text-white/40">
-          Popup protection is on.{" "}
-          <button type="button" onClick={turnOffProtection} className="underline hover:text-white/70">
-            Player not loading? Turn it off
-          </button>
-        </p>
-      ) : (
-        <p className="mt-2 text-xs text-white/40">
-          Popup protection is off.{" "}
-          <button type="button" onClick={() => setProtectedMode(true)} className="underline hover:text-white/70">
-            Turn it back on
-          </button>
-        </p>
-      )}
+      {SANDBOX_SUPPORTED &&
+        (protectedMode ? (
+          <p className="mt-2 text-xs text-white/40">
+            Popup protection is on.{" "}
+            <button type="button" onClick={turnOffProtection} className="underline hover:text-white/70">
+              Player not loading? Turn it off
+            </button>
+          </p>
+        ) : (
+          <p className="mt-2 text-xs text-white/40">
+            Popup protection is off.{" "}
+            <button type="button" onClick={() => setProtectedMode(true)} className="underline hover:text-white/70">
+              Turn it back on
+            </button>
+          </p>
+        ))}
     </div>
   );
 }
