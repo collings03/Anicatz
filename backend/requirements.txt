@@ -8,3 +8,6 @@ requests
 python-dotenv
 gunicorn
 redis
+psycopg[binary]
+dj-database-url
+Pillow
