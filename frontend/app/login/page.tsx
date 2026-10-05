@@ -1,16 +1,29 @@
 "use client";
+// Save as: frontend/app/login/page.tsx
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
+// Uses NEXT_PUBLIC_API_URL when set. Otherwise: the deployed backend in production, localhost in dev.
 const API = (
   process.env.NEXT_PUBLIC_API_URL ??
   (process.env.NODE_ENV === "production" ? "https://anicatz-7v6u.vercel.app/api" : "http://localhost:8000/api")
 ).replace(/\/+$/, "");
+
 const input =
   "w-full rounded-2xl bg-[#0f0e24] px-4 py-3 text-white placeholder:text-white/35 outline-none ring-1 ring-white/10 transition focus:ring-2 focus:ring-[#d9f96a]";
 
 const firstError = (body: unknown) =>
   Object.values((body ?? {}) as Record<string, unknown>).flat().join(" ") || "Something went wrong.";
+
+/** Reads a failed response: shows the server's own message, or the HTTP status if it crashed (HTML reply). */
+const failMsg = async (r: Response) => {
+  const text = await r.text();
+  try {
+    return firstError(JSON.parse(text));
+  } catch {
+    return `Server error (HTTP ${r.status}). Check the backend logs.`;
+  }
+};
 
 type Mood = "happy" | "hiding" | "worried";
 
@@ -193,10 +206,10 @@ export default function LoginPage() {
     try {
       if (mode === "register") {
         const r = await post("/auth/register/", { username, email, password });
-        if (!r.ok) throw new Error(firstError(await r.json().catch(() => ({}))));
+        if (!r.ok) throw new Error(await failMsg(r));
       }
       const t = await post("/auth/token/", { username, password });
-      if (!t.ok) throw new Error("Wrong username or password.");
+      if (!t.ok) throw new Error(t.status >= 500 ? await failMsg(t) : "Wrong username or password.");
       const { access, refresh } = await t.json();
       localStorage.setItem("anicatz_access", access);
       localStorage.setItem("anicatz_refresh", refresh);
