@@ -2,8 +2,10 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
-
+const API = (
+  process.env.NEXT_PUBLIC_API_URL ??
+  (process.env.NODE_ENV === "production" ? "https://anicatz-7v6u.vercel.app/api" : "http://localhost:8000/api")
+).replace(/\/+$/, "");
 const input =
   "w-full rounded-2xl bg-[#0f0e24] px-4 py-3 text-white placeholder:text-white/35 outline-none ring-1 ring-white/10 transition focus:ring-2 focus:ring-[#d9f96a]";
 
