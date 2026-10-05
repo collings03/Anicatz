@@ -33,7 +33,6 @@ export default function Spotlight({ items }: { items: Anime[] }) {
     <section
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
-      style={{ background: "#0b0b13" }}
       className="on-image relative -mt-24 h-[66svh] min-h-[420px] w-full overflow-hidden text-white sm:h-[82vh] sm:min-h-[520px]"
     >
       {items.map((a, idx) => {
@@ -45,30 +44,40 @@ export default function Spotlight({ items }: { items: Anime[] }) {
             aria-hidden={idx !== i}
             className={`absolute inset-0 transition-opacity duration-700 ${idx === i ? "opacity-100" : "pointer-events-none opacity-0"}`}
           >
-            {/* Banner, or the cover blurred when there is no banner */}
-            {a.bannerImage ? (
-              <Image
-                src={a.bannerImage}
-                alt=""
-                fill
-                priority={idx === 0}
-                sizes="100vw"
-                className="object-cover object-[65%_center] sm:object-center"
-              />
-            ) : (
-              <Image
-                src={a.coverImage.extraLarge}
-                alt=""
-                fill
-                priority={idx === 0}
-                sizes="100vw"
-                className="scale-110 object-cover opacity-60 blur-2xl"
-              />
-            )}
+            {/* Photo + overlays. The mask fades this layer to transparent at the bottom, so the real page
+                background shows through: it blends with whatever is behind it, in dark or light mode. */}
+            <div
+              className="absolute inset-0"
+              style={{
+                WebkitMaskImage: "linear-gradient(to bottom, #000 calc(100% - clamp(6rem, 24%, 12rem)), transparent 100%)",
+                maskImage: "linear-gradient(to bottom, #000 calc(100% - clamp(6rem, 24%, 12rem)), transparent 100%)",
+              }}
+            >
+              {/* Banner, or the cover blurred when there is no banner */}
+              {a.bannerImage ? (
+                <Image
+                  src={a.bannerImage}
+                  alt=""
+                  fill
+                  priority={idx === 0}
+                  sizes="100vw"
+                  className="object-cover object-[65%_center] sm:object-center"
+                />
+              ) : (
+                <Image
+                  src={a.coverImage.extraLarge}
+                  alt=""
+                  fill
+                  priority={idx === 0}
+                  sizes="100vw"
+                  className="scale-110 object-cover opacity-60 blur-2xl"
+                />
+              )}
 
-            {/* Legibility overlays: left-to-right on wide screens, bottom-up on phones */}
-            <div className="absolute inset-0 hidden bg-gradient-to-r from-black via-black/60 to-transparent sm:block" />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/45 to-black/10 sm:from-black/60 sm:via-transparent sm:to-transparent" />
+              {/* Legibility overlays: left-to-right on wide screens, bottom-up on phones */}
+              <div className="absolute inset-0 hidden bg-gradient-to-r from-black via-black/60 to-transparent sm:block" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/45 to-black/10 sm:from-black/60 sm:via-transparent sm:to-transparent" />
+            </div>
 
             {/* Text */}
             <div className="absolute inset-x-0 bottom-16 space-y-2.5 px-4 sm:bottom-10 sm:right-auto sm:max-w-2xl sm:space-y-3 sm:px-10">
@@ -122,9 +131,6 @@ export default function Spotlight({ items }: { items: Anime[] }) {
           />
         ))}
       </div>
-
-      {/* Soft blend into the page colour (follows light/dark mode) */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-[color:var(--page-bg)] to-transparent" />
     </section>
   );
 }

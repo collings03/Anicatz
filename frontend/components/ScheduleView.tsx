@@ -4,9 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { clientLang } from "@/lib/lang";
 import { animeSlug, displayTitle, type ScheduleItem } from "@/lib/types";
 
-// Same-origin proxy (app/api/proxy/[...path]/route.ts) -> your Django backend.
-// The browser never talks to the backend directly, so CORS and "localhost" can't break it.
-const API = "/api/proxy";
+// The schedule endpoint on your deployed backend (same link that returns the JSON list):
+// https://anicatz-7v6u.vercel.app/api/anime/schedule/?start=...&end=...
+const SCHEDULE_URL = "https://anicatz-7v6u.vercel.app/api/anime/schedule/";
 const VISIBLE = 7;
 const GAP = 12; // px, matches gap-3
 const keyOf = (d: Date) => `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
@@ -54,7 +54,7 @@ export default function HomeSchedule() {
   const [todayIdx, setTodayIdx] = useState(0);
   const [selected, setSelected] = useState(0);
   const [cache, setCache] = useState<Record<string, ScheduleItem[]>>({});
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
   const [showAll, setShowAll] = useState(false);
   const strip = useRef<HTMLDivElement>(null);
@@ -95,20 +95,24 @@ export default function HomeSchedule() {
 
     // Clear any old error first, so switching to an already-loaded day
     // doesn't keep showing "Couldn't load this day".
-    setError(false);
+    setError(null);
     if (cache[k]) return;
 
     const ctrl = new AbortController();
     const start = Math.floor(new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() / 1000);
     const end = Math.floor(new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime() / 1000);
-    fetch(`${API}/anime/schedule/?start=${start}&end=${end}&lang=${clientLang()}`, { signal: ctrl.signal })
+    const url = `${SCHEDULE_URL}?start=${start}&end=${end}&lang=${clientLang()}`;
+    fetch(url, { signal: ctrl.signal })
       .then((r) => {
-        if (!r.ok) throw new Error();
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
       })
       .then((data: ScheduleItem[]) => setCache((c) => ({ ...c, [k]: data })))
       .catch((e) => {
-        if (e.name !== "AbortError") setError(true);
+        if (e.name === "AbortError") return;
+        console.error("Schedule request failed:", url, e);
+        // Shows the real reason on screen (e.g. "HTTP 502" or "Failed to fetch") so it can be fixed fast.
+        setError(`${e.message || "Network error"} - ${url.split("?")[0]}`);
       });
     return () => ctrl.abort();
   }, [days, selected, cache, retry]);
@@ -196,6 +200,7 @@ export default function HomeSchedule() {
           <button className="underline" onClick={() => setRetry((n) => n + 1)}>
             Retry
           </button>
+          <span className="mt-1 block break-all text-xs text-neutral-500">{error}</span>
         </p>
       ) : !items ? (
         <p className="text-sm text-neutral-400">Loading schedule...</p>
