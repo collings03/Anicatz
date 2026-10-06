@@ -1,16 +1,16 @@
 "use client";
 // frontend/components/AmbientVideo.tsx
 //
-// YouTube-style ambient mode. The current video frame is drawn ~15 times a second onto a tiny
-// canvas (64x36), which is stretched behind the player and heavily blurred. That is exactly how
-// YouTube does it, so the glow follows the real picture frame by frame.
+// YouTube-style ambient mode: the current video frame is drawn ~15x/sec onto a tiny canvas
+// (64x36), stretched behind the player and heavily blurred.
 //
-// It needs a real <video> element: an mp4 URL or an HLS (.m3u8) URL. It cannot work with an
-// <iframe> player from another site, because the browser never lets your page see inside it.
+// No npm packages needed. Do NOT set crossOrigin on the <video>: drawing a cross-origin
+// video onto a canvas works fine for display (only reading pixels back is blocked),
+// so the glow works without any permission/CORS setup on the video host.
 import { useEffect, useRef, useState } from "react";
-import type HlsType from "hls.js";
 
 const KEY = "anicatz-ambient";
+const HLS_CDN = "https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js";
 
 type Props = {
   /** Direct video address: .mp4 or .m3u8 (HLS). */
@@ -20,6 +20,27 @@ type Props = {
   onEnded?: () => void;
   className?: string;
 };
+
+// Load hls.js from a CDN once, only if an .m3u8 needs it.
+let hlsPromise: Promise<any> | null = null;
+function loadHls(): Promise<any> {
+  const w = window as any;
+  if (w.Hls) return Promise.resolve(w.Hls);
+  if (!hlsPromise) {
+    hlsPromise = new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = HLS_CDN;
+      s.async = true;
+      s.onload = () => (w.Hls ? resolve(w.Hls) : reject(new Error("Hls missing")));
+      s.onerror = () => {
+        hlsPromise = null;
+        reject(new Error("Failed to load hls.js"));
+      };
+      document.head.appendChild(s);
+    });
+  }
+  return hlsPromise;
+}
 
 export default function AmbientVideo({ src, poster, autoPlay = false, onEnded, className = "" }: Props) {
   const video = useRef<HTMLVideoElement>(null);
@@ -45,25 +66,28 @@ export default function AmbientVideo({ src, poster, autoPlay = false, onEnded, c
       return !v;
     });
 
-  // Attach the source: plain file, or HLS through hls.js (Safari plays HLS natively).
+  // Attach the source: plain file, native HLS (Safari), or hls.js from CDN.
   useEffect(() => {
     const v = video.current;
     if (!v) return;
     setError(false);
-    let hls: HlsType | null = null;
+    let hls: any = null;
     let cancelled = false;
 
-    if (/\.m3u8(\?|$)/i.test(src) && !v.canPlayType("application/vnd.apple.mpegurl")) {
-      import("hls.js").then(({ default: Hls }) => {
-        if (cancelled) return;
-        if (!Hls.isSupported()) return setError(true);
-        hls = new Hls();
-        hls.loadSource(src);
-        hls.attachMedia(v);
-        hls.on(Hls.Events.ERROR, (_e, data) => {
-          if (data.fatal) setError(true);
-        });
-      });
+    const isHls = /\.m3u8(\?|$)/i.test(src);
+    if (isHls && !v.canPlayType("application/vnd.apple.mpegurl")) {
+      loadHls()
+        .then((Hls) => {
+          if (cancelled) return;
+          if (!Hls.isSupported()) return setError(true);
+          hls = new Hls();
+          hls.loadSource(src);
+          hls.attachMedia(v);
+          hls.on(Hls.Events.ERROR, (_e: unknown, data: { fatal?: boolean }) => {
+            if (data.fatal) setError(true);
+          });
+        })
+        .catch(() => !cancelled && setError(true));
     } else {
       v.src = src;
     }
@@ -83,7 +107,7 @@ export default function AmbientVideo({ src, poster, autoPlay = false, onEnded, c
     if (!ambient || !v || !c) return;
     const ctx = c.getContext("2d", { alpha: false });
     if (!ctx) return;
-    c.width = 64; // tiny on purpose: the CSS blur does the rest, and it keeps this very cheap
+    c.width = 64;
     c.height = 36;
 
     let raf = 0;
@@ -102,7 +126,7 @@ export default function AmbientVideo({ src, poster, autoPlay = false, onEnded, c
     const loop = (now: number) => {
       if (stopped) return;
       if (!v.paused && !v.ended && now - last > 66) {
-        last = now; // about 15 frames per second
+        last = now; // ~15 fps
         draw();
       }
       raf = requestAnimationFrame(loop);
