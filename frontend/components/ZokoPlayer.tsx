@@ -55,6 +55,20 @@ const AmbientIcon = () => (
   </svg>
 );
 
+const SyncIcon = () => (
+  <svg {...icon}>
+    <rect x="3" y="5" width="18" height="12" rx="2" />
+    <path d="M8 21h8M12 17v4" />
+    <path d="M7 11h3l1.5-2.5 2 5L15 11h2" />
+  </svg>
+);
+
+type RGB = [number, number, number];
+const clamp = (n: number) => Math.max(0, Math.min(255, n));
+// Slightly more vivid than the raw pixels so the glow reads well around the video.
+const vivid = (c: RGB): RGB => c.map((v) => clamp((v - 128) * 1.3 + 138)) as RGB;
+const css = (c: RGB) => `rgb(${Math.round(c[0])}, ${Math.round(c[1])}, ${Math.round(c[2])})`;
+
 const hexOf = (c: string) => {
   const h = c.replace("#", "");
   return /^[0-9a-f]{6}$/i.test(h) ? h : "35d5bf";
@@ -63,6 +77,9 @@ const hexOf = (c: string) => {
 export default function ZokoPlayer({ malId, episode, totalEpisodes, onEpisodeChange, color = "35d5bf" }: Props) {
   const ref = useRef<HTMLIFrameElement>(null);
   const box = useRef<HTMLDivElement>(null);
+  const wrap = useRef<HTMLDivElement>(null); // holds the --amb-* colour variables
+  const streamRef = useRef<MediaStream | null>(null);
+  const timerRef = useRef<number | null>(null);
 
   const [track, setTrack] = useState<Track>("sub");
   const [failed, setFailed] = useState(false);
@@ -73,6 +90,8 @@ export default function ZokoPlayer({ malId, episode, totalEpisodes, onEpisodeCha
   const [isFs, setIsFs] = useState(false); // real browser fullscreen
   const [isMobile, setIsMobile] = useState(false);
   const [ambient, setAmbient] = useState(true);
+  const [syncing, setSyncing] = useState(false); // live colours from the picture (desktop Chrome/Edge)
+  const [canSync, setCanSync] = useState(false);
 
   const hex = hexOf(color);
 
@@ -96,11 +115,127 @@ export default function ZokoPlayer({ malId, episode, totalEpisodes, onEpisodeCha
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) setAmbient(false);
   }, []);
 
+  // Live sync needs tab capture, which only works well on desktop Chrome / Edge.
+  useEffect(() => {
+    setCanSync(
+      !!navigator.mediaDevices?.getDisplayMedia &&
+        /Chrome|Edg\//.test(navigator.userAgent) &&
+        !/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
+    );
+  }, []);
+
+  const resetColors = useCallback(() => {
+    const el = wrap.current;
+    if (!el) return;
+    ["top", "right", "bottom", "left", "avg"].forEach((k) => el.style.setProperty(`--amb-${k}`, `#${hex}`));
+  }, [hex]);
+
+  const stopSync = useCallback(() => {
+    if (timerRef.current) window.clearInterval(timerRef.current);
+    timerRef.current = null;
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    setSyncing(false);
+    resetColors();
+  }, [resetColors]);
+
+  useEffect(() => stopSync, [stopSync]); // stop capturing when the player goes away
+
+  const startSync = async () => {
+    try {
+      // The browser asks the viewer to share THIS tab. Nothing is recorded or uploaded:
+      // the frames are only sampled on this device to pick edge colours.
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: 10 },
+        audio: false,
+        preferCurrentTab: true,
+        selfBrowserSurface: "include",
+      } as unknown as DisplayMediaStreamOptions);
+      streamRef.current = stream;
+      stream.getVideoTracks()[0]?.addEventListener("ended", stopSync);
+
+      const v = document.createElement("video");
+      v.muted = true;
+      v.playsInline = true;
+      v.srcObject = stream;
+      await v.play();
+
+      const W = 32;
+      const H = 18;
+      const canvas = document.createElement("canvas");
+      canvas.width = W;
+      canvas.height = H;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!ctx) return stopSync();
+
+      const cur: Record<string, RGB> = { top: [0, 0, 0], right: [0, 0, 0], bottom: [0, 0, 0], left: [0, 0, 0] };
+      let first = true;
+
+      timerRef.current = window.setInterval(() => {
+        const el = box.current;
+        const root = wrap.current;
+        if (!el || !root || !v.videoWidth || document.hidden) return;
+        if (document.fullscreenElement || el.classList.contains("fixed")) return; // glow is hidden there
+
+        // Map the player's on-screen rectangle onto the captured frame.
+        const r = el.getBoundingClientRect();
+        const k = v.videoWidth / window.innerWidth;
+        const sx = Math.max(0, r.left * k);
+        const sy = Math.max(0, r.top * k);
+        const sw = Math.min(r.width * k, v.videoWidth - sx);
+        const sh = Math.min(r.height * k, v.videoHeight - sy);
+        if (sw < 16 || sh < 16) return; // scrolled out of view
+
+        ctx.drawImage(v, sx, sy, sw, sh, 0, 0, W, H);
+        const px = ctx.getImageData(0, 0, W, H).data;
+
+        const edge = (test: (x: number, y: number) => boolean): RGB => {
+          let r0 = 0, g0 = 0, b0 = 0, n = 0;
+          for (let y = 0; y < H; y++) {
+            for (let x = 0; x < W; x++) {
+              if (!test(x, y)) continue;
+              const i = (y * W + x) * 4;
+              r0 += px[i]; g0 += px[i + 1]; b0 += px[i + 2]; n++;
+            }
+          }
+          return n ? [r0 / n, g0 / n, b0 / n] : [0, 0, 0];
+        };
+
+        const target: Record<string, RGB> = {
+          top: edge((_, y) => y < 3),
+          bottom: edge((_, y) => y >= H - 3),
+          left: edge((x) => x < 3),
+          right: edge((x) => x >= W - 3),
+        };
+
+        let ar = 0, ag = 0, ab = 0;
+        for (const name of Object.keys(target)) {
+          const c = cur[name];
+          const t = target[name];
+          const f = first ? 1 : 0.3; // ease towards the new colour so it never flickers
+          c[0] += (t[0] - c[0]) * f;
+          c[1] += (t[1] - c[1]) * f;
+          c[2] += (t[2] - c[2]) * f;
+          const out = vivid(c);
+          root.style.setProperty(`--amb-${name}`, css(out));
+          ar += out[0]; ag += out[1]; ab += out[2];
+        }
+        root.style.setProperty("--amb-avg", css([ar / 4, ag / 4, ab / 4]));
+        first = false;
+      }, 120);
+
+      setSyncing(true);
+    } catch {
+      stopSync(); // viewer cancelled the prompt, or the browser refused
+    }
+  };
+
   const toggleAmbient = () =>
     setAmbient((v) => {
       try {
         localStorage.setItem(AMBIENT_KEY, v ? "off" : "on");
       } catch {}
+      if (v) stopSync();
       return !v;
     });
 
@@ -214,24 +349,34 @@ export default function ZokoPlayer({ malId, episode, totalEpisodes, onEpisodeCha
   return (
     <div className="w-full">
       <style>{`
-        @keyframes ambient-breathe{0%,100%{opacity:.35;transform:scale(1)}50%{opacity:.65;transform:scale(1.05)}}
-        .ambient-a{animation:ambient-breathe 7s ease-in-out infinite}
-        .ambient-b{animation:ambient-breathe 9s ease-in-out infinite reverse}
-        @media (prefers-reduced-motion: reduce){.ambient-a,.ambient-b{animation:none;opacity:.45}}
+        @keyframes ambient-breathe{0%,100%{opacity:.4;transform:scale(1)}50%{opacity:.7;transform:scale(1.04)}}
+        .ambient-pulse{animation:ambient-breathe 8s ease-in-out infinite}
+        @media (prefers-reduced-motion: reduce){.ambient-pulse{animation:none;opacity:.5}}
       `}</style>
 
       {/* VIDEO (with the ambient glow behind it) */}
-      <div className="relative isolate">
+      <div
+        ref={wrap}
+        className="relative isolate"
+        style={
+          {
+            "--amb-top": `#${hex}`,
+            "--amb-right": `#${hex}`,
+            "--amb-bottom": `#${hex}`,
+            "--amb-left": `#${hex}`,
+            "--amb-avg": `#${hex}`,
+          } as React.CSSProperties
+        }
+      >
         {ambient && !inFullscreen && (
-          <div aria-hidden className="pointer-events-none absolute -inset-2 -z-10 sm:-inset-5">
-            <div
-              className="ambient-a absolute inset-0 rounded-[2rem] blur-2xl sm:blur-3xl"
-              style={{ background: `radial-gradient(60% 70% at 25% 50%, #${hex}cc, transparent 70%)` }}
-            />
-            <div
-              className="ambient-b absolute inset-0 rounded-[2rem] blur-2xl sm:blur-3xl"
-              style={{ background: `radial-gradient(60% 70% at 75% 50%, #${hex}99, transparent 70%)` }}
-            />
+          <div
+            aria-hidden
+            className={`pointer-events-none absolute -inset-2 -z-10 sm:-inset-5 ${syncing ? "opacity-80" : "ambient-pulse"}`}
+          >
+            <div className="absolute inset-x-6 -top-1 h-1/2 rounded-full blur-2xl sm:blur-3xl" style={{ background: "var(--amb-top)" }} />
+            <div className="absolute inset-x-6 -bottom-1 h-1/2 rounded-full blur-2xl sm:blur-3xl" style={{ background: "var(--amb-bottom)" }} />
+            <div className="absolute inset-y-6 -left-1 w-1/3 rounded-full blur-2xl sm:blur-3xl" style={{ background: "var(--amb-left)" }} />
+            <div className="absolute inset-y-6 -right-1 w-1/3 rounded-full blur-2xl sm:blur-3xl" style={{ background: "var(--amb-right)" }} />
           </div>
         )}
 
@@ -240,7 +385,12 @@ export default function ZokoPlayer({ malId, episode, totalEpisodes, onEpisodeCha
           className={
             expanded
               ? "fixed inset-0 z-[10001] h-[100dvh] w-screen overflow-hidden bg-black"
-              : "relative aspect-video overflow-hidden rounded-xl bg-black"
+              : "relative aspect-video overflow-hidden rounded-xl bg-black transition-shadow duration-300"
+          }
+          style={
+            ambient && !expanded
+              ? { boxShadow: "0 0 0 2px var(--amb-avg), 0 0 28px -6px var(--amb-avg)" }
+              : undefined
           }
         >
           {/* No sandbox attribute: zokoanime.video detects sandboxed iframes and shows "EMBED BLOCKED". */}
@@ -374,7 +524,25 @@ export default function ZokoPlayer({ malId, episode, totalEpisodes, onEpisodeCha
             <AmbientIcon />
             <span>Ambient {ambient ? "on" : "off"}</span>
           </button>
+
+          {/* Desktop Chrome / Edge only: colours follow the actual picture */}
+          {canSync && ambient && (
+            <button
+              type="button"
+              onClick={syncing ? stopSync : startSync}
+              aria-pressed={syncing}
+              className={`${action} ${syncing ? "!border-teal-400 !bg-teal-400 !text-black" : ""}`}
+            >
+              <SyncIcon />
+              <span>{syncing ? "Stop sync" : "Sync with video"}</span>
+            </button>
+          )}
         </div>
+        {syncing && (
+          <p className="text-xs text-white/50">
+            Sync is on: your browser shows a &quot;sharing this tab&quot; notice. Nothing is recorded or uploaded.
+          </p>
+        )}
       </div>
     </div>
   );
