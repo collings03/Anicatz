@@ -20,12 +20,9 @@ const grotesk = Space_Grotesk({ subsets: ["latin"], variable: "--font-grotesk" }
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   icons: {
-  icon: [
-    { url: "/icon.png", type: "image/png", sizes: "192x192" },
-    { url: "/favicon.ico", sizes: "48x48" },
-  ],
-  apple: "/apple-icon.png",
-},
+    icon: [{ url: "/favicon.ico", sizes: "any" }],
+    shortcut: "/favicon.ico",
+  },
   title: { default: SITE_TITLE, template: `%s | ${SITE_NAME}` },
   description: SITE_DESCRIPTION,
   keywords: SITE_KEYWORDS,

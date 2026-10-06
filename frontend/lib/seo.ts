@@ -64,5 +64,5 @@ export const organizationJsonLd = {
   "@type": "Organization",
   name: SITE_NAME,
   url: SITE_URL,
-  logo: `${SITE_URL}/logo.png`, // put a square logo at frontend/public/logo.png
+  logo: `${SITE_URL}/favicon.ico`,
 };
