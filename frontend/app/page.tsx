@@ -5,6 +5,7 @@ import HomeSchedule from "@/components/ScheduleView";
 import Spotlight from "@/components/Spotlight";
 import Top10Tabs from "@/components/Top10Tabs";
 import TrendingRail from "@/components/TrendingRail";
+import WatchHistoryRail from "@/components/WatchHistoryRail";
 import { getBrowse } from "@/lib/api";
 
 const GRID = "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6";
@@ -41,6 +42,11 @@ export default async function Home() {
         <h2 className="mb-3 text-lg font-semibold sm:mb-4 sm:text-xl">Trending</h2>
         <TrendingRail items={trending.media.slice(0, 15)} />
       </section>
+
+      {/* Continue watching: hides itself until the viewer has watched something */}
+      <div className="min-w-0 px-4 sm:px-6">
+        <WatchHistoryRail />
+      </div>
 
       {/* grid-cols-1 matters: without it the single column grows to its widest child and stretches the page. */}
       <div className="grid grid-cols-1 gap-8 px-4 pt-8 sm:px-6 sm:pt-10 xl:grid-cols-[minmax(0,1fr)_340px]">

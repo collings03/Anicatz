@@ -1,8 +1,13 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { AVATARS, avatarSrc } from "@/lib/avatar";
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
+// Uses NEXT_PUBLIC_API_URL when set. Otherwise: the deployed backend in production, localhost in dev.
+const API = (
+  process.env.NEXT_PUBLIC_API_URL ??
+  (process.env.NODE_ENV === "production" ? "https://anicatz-7v6u.vercel.app/api" : "http://localhost:8000/api")
+).replace(/\/+$/, "");
 const API_ORIGIN = (() => {
   try {
     return new URL(API).origin;
@@ -21,7 +26,64 @@ export const authHeaders = (): Record<string, string> => {
   return t ? { Authorization: `Bearer ${t}` } : {};
 };
 
-export const absUrl = (u: string | null) => (u && u.startsWith("/") ? `${API_ORIGIN}${u}` : u);
+/**
+ * Turns whatever the backend sends as "avatar" into an image address:
+ *  - "preset:lime"  -> a built-in avatar (drawn in code)
+ *  - "/media/..."   -> an uploaded photo on the backend
+ *  - "https://..."  -> used as is
+ */
+export const absUrl = (u: string | null) => {
+  if (!u) return null;
+  if (u.startsWith("preset:")) return avatarSrc(u.slice(7)) || null;
+  return u.startsWith("/") ? `${API_ORIGIN}${u}` : u;
+};
+
+/** Stable "random-looking" avatar for a name, so users without a saved avatar always see the same one. */
+export const fallbackAvatarId = (seed: string) => {
+  if (!AVATARS.length) return "";
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return AVATARS[h % AVATARS.length].id;
+};
+
+/** Avatar image for a profile: the saved one, or the stable fallback if none is saved yet. */
+export const profileAvatarSrc = (p: Profile | null) => {
+  if (!p) return null;
+  if (p.avatar) return absUrl(p.avatar);
+  const id = fallbackAvatarId(p.email || p.username);
+  return id ? avatarSrc(id) || null : null;
+};
+
+// Remembers who we already tried this page load, so the request is never repeated in a loop.
+const autoAssigned = new Set<string>();
+
+/**
+ * If the logged-in user has no avatar, pick a random built-in one ONCE and save it on the account.
+ * Use it anywhere the profile is loaded (ProfileSettings already calls it).
+ */
+export function useAutoAvatar(profile: Profile | null, onUpdate: (p: Profile) => void) {
+  useEffect(() => {
+    if (!profile || profile.avatar || AVATARS.length === 0) return;
+    const key = profile.email || profile.username;
+    if (autoAssigned.has(key)) return;
+    const headers = authHeaders();
+    if (!headers.Authorization) return; // not logged in
+    autoAssigned.add(key);
+
+    const pick = AVATARS[Math.floor(Math.random() * AVATARS.length)].id;
+    const fd = new FormData();
+    fd.set("avatar_preset", pick);
+
+    fetch(`${API}/auth/profile/`, { method: "PATCH", headers, body: fd })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data && typeof data === "object") onUpdate(data as Profile);
+      })
+      .catch(() => {
+        // ignore: the stable fallback avatar is still shown
+      });
+  }, [profile, onUpdate]);
+}
 
 const CameraIcon = () => (
   <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -88,11 +150,15 @@ export default function ProfileSettings({
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // NEW: give users without an avatar a random one, saved once.
+  useAutoAvatar(profile, onUpdate);
+
   const [open, setOpen] = useState(false);
   const expanded = page || open;
   const [name, setName] = useState(profile?.username ?? "");
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const [preset, setPreset] = useState<string | null>(null); // avatar picked in this session, not saved yet
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<Msg>(null);
 
@@ -100,6 +166,9 @@ export default function ProfileSettings({
   const [pw, setPw] = useState({ old: "", next: "" });
   const [pwBusy, setPwBusy] = useState(false);
   const [pwMsg, setPwMsg] = useState<Msg>(null);
+
+  // The avatar currently saved on the account, if it is a built-in one.
+  const currentPreset = profile?.avatar?.startsWith("preset:") ? profile.avatar.slice(7) : "";
 
   // Keep the name field in sync when the profile loads or changes.
   useEffect(() => {
@@ -114,12 +183,21 @@ export default function ProfileSettings({
     if (!f.type.startsWith("image/")) return setMsg({ type: "err", text: "Choose an image file." });
     if (f.size > MAX_AVATAR_BYTES) return setMsg({ type: "err", text: "Image must be under 2 MB." });
     setMsg(null);
+    setPreset(null);
     setFile(f);
     setPreview(URL.createObjectURL(f));
   };
 
+  const choosePreset = (id: string) => {
+    setMsg(null);
+    setFile(null);
+    setPreview(null);
+    setPreset(id);
+  };
+
   const trimmed = name.trim();
-  const dirty = !!file || (trimmed !== "" && trimmed !== profile?.username);
+  const presetChanged = preset !== null && preset !== currentPreset;
+  const dirty = !!file || presetChanged || (trimmed !== "" && trimmed !== profile?.username);
 
   const save = async () => {
     if (!dirty || saving) return;
@@ -129,13 +207,24 @@ export default function ProfileSettings({
       const fd = new FormData();
       if (trimmed && trimmed !== profile?.username) fd.set("username", trimmed);
       if (file) fd.set("avatar", file);
+      if (presetChanged) fd.set("avatar_preset", preset as string);
       const r = await fetch(`${API}/auth/profile/`, { method: "PATCH", headers: authHeaders(), body: fd });
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(data?.detail || data?.username?.[0] || data?.avatar?.[0] || "Could not save changes.");
-      onUpdate(data);
-      setName(data.username);
+      const text = await r.text();
+      let data: Record<string, unknown> = {};
+      try {
+        data = JSON.parse(text);
+      } catch {}
+      if (!r.ok) {
+        const first = (v: unknown) => (Array.isArray(v) ? String(v[0]) : typeof v === "string" ? v : "");
+        throw new Error(
+          first(data.detail) || first(data.username) || first(data.avatar) || `Could not save changes (HTTP ${r.status}).`
+        );
+      }
+      onUpdate(data as unknown as Profile);
+      setName((data.username as string) ?? name);
       setFile(null);
       setPreview(null);
+      setPreset(null);
       setMsg({ type: "ok", text: "Profile updated." });
     } catch (e) {
       setMsg({ type: "err", text: e instanceof Error ? e.message : "Could not save changes." });
@@ -166,8 +255,10 @@ export default function ProfileSettings({
     }
   };
 
-  const shownAvatar = preview ?? absUrl(profile?.avatar ?? null);
+  // CHANGED: falls back to the stable avatar when none is saved yet.
+  const shownAvatar = preview ?? (preset ? avatarSrc(preset) : profileAvatarSrc(profile));
   const shownName = profile?.username ?? "A";
+  const selectedPreset = file ? "" : (preset ?? currentPreset);
 
   return (
     <div className={page ? "" : "mb-3 rounded-2xl bg-white/5 p-2"}>
@@ -179,7 +270,7 @@ export default function ProfileSettings({
           onClick={() => setOpen((v) => !v)}
           className="flex w-full items-center gap-3 rounded-xl p-1 text-left hover:bg-white/5"
         >
-          <Avatar src={absUrl(profile?.avatar ?? null)} name={shownName} className="h-11 w-11 shrink-0 rounded-full text-lg" />
+          <Avatar src={profileAvatarSrc(profile)} name={shownName} className="h-11 w-11 shrink-0 rounded-full text-lg" />
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-semibold">{profile?.username ?? "Your profile"}</span>
             <span className="block truncate text-xs text-white/50">Profile settings</span>
@@ -196,7 +287,7 @@ export default function ProfileSettings({
               <Avatar src={shownAvatar} name={shownName} className="h-16 w-16 rounded-full text-2xl" />
               <button
                 type="button"
-                aria-label="Change profile picture"
+                aria-label="Upload a profile photo"
                 onClick={() => fileRef.current?.click()}
                 className="absolute -bottom-1 -right-1 grid h-7 w-7 place-items-center rounded-full bg-teal-400 text-black shadow-lg hover:brightness-110"
               >
@@ -207,9 +298,34 @@ export default function ProfileSettings({
             <div className="min-w-0">
               <p className="truncate text-xs text-white/50">{profile?.email}</p>
               <button type="button" onClick={() => fileRef.current?.click()} className="mt-1 text-xs font-semibold text-teal-400 hover:underline">
-                Change picture
+                Upload a photo
               </button>
             </div>
+          </div>
+
+          {/* Built-in avatars */}
+          <p className="mb-2 mt-4 px-1 text-xs font-semibold text-white/50">Or choose an avatar</p>
+          <div className="grid grid-cols-4 gap-2.5 px-0.5 sm:grid-cols-6" role="radiogroup" aria-label="Avatar">
+            {AVATARS.map((a) => {
+              const active = selectedPreset === a.id;
+              return (
+                <button
+                  key={a.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  aria-label={a.label}
+                  title={a.label}
+                  onClick={() => choosePreset(a.id)}
+                  className={`aspect-square overflow-hidden rounded-full ring-2 transition ${
+                    active ? "scale-105 ring-teal-400" : "ring-white/10 hover:ring-white/40"
+                  }`}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={avatarSrc(a.id)} alt="" className="h-full w-full object-cover" draggable={false} />
+                </button>
+              );
+            })}
           </div>
 
           {/* Name */}

@@ -2,12 +2,14 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import AnimeCard from "@/components/AnimeCard";
+import Comments from "@/components/Comments";
+import HistoryTracker from "@/components/HistoryTracker";
 import WatchClient from "@/components/WatchClient";
 import { getAnime, getRecommendations } from "@/lib/api";
 import { animeSlug, availableEpisodes, displayTitle, idFromSlug, stripHtml } from "@/lib/types";
 
 export default async function WatchPage({ params }: { params: Promise<{ id: string; ep: string }> }) {
-    const { id: slug, ep } = await params;
+  const { id: slug, ep } = await params;
   const id = idFromSlug(slug);
   if (!id) notFound();
   const [anime, recs] = await Promise.all([
@@ -23,6 +25,13 @@ export default async function WatchPage({ params }: { params: Promise<{ id: stri
 
   return (
     <main className="grid w-full gap-6 px-6 py-6 lg:grid-cols-[240px_minmax(0,1fr)_280px]">
+      <HistoryTracker
+        slug={path}
+        episode={episode}
+        title={displayTitle(anime)}
+        image={anime.coverImage.large ?? null}
+      />
+
       {/* Episode list */}
       <aside className="order-2 lg:order-1">
         <h2 className="mb-3 text-lg font-semibold">Episodes</h2>
@@ -42,8 +51,8 @@ export default async function WatchPage({ params }: { params: Promise<{ id: stri
         </ul>
       </aside>
 
-      {/* Player */}
-      <section className="order-1 space-y-4 lg:order-2">
+      {/* Player + comments */}
+      <section className="order-1 min-w-0 space-y-4 lg:order-2">
         <Link href={`/anime/${path}`} className="text-sm text-neutral-400 hover:text-white">
           &larr; {displayTitle(anime)}
         </Link>
@@ -51,6 +60,10 @@ export default async function WatchPage({ params }: { params: Promise<{ id: stri
         <p className="text-sm text-neutral-400">
           You are watching <span className="font-semibold text-white">Episode {episode}</span>
         </p>
+
+        <div className="pt-4">
+          <Comments animeId={Number(id)} episode={episode} />
+        </div>
       </section>
 
       {/* Anime info */}

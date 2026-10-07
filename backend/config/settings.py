@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     "anime",
     "accounts",
     "watchlist",
+    "comments",
 ]
 
 MIDDLEWARE = [
