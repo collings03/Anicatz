@@ -1,12 +1,10 @@
-from django.shortcuts import render
-
-# Create your views here.
+# backend/comments/views.py
 from django.db.models import Prefetch
 from rest_framework import generics
+from rest_framework.exceptions import ValidationError
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
 from rest_framework.throttling import UserRateThrottle
-from rest_framework.exceptions import ValidationError
 
 from .models import Comment
 from .serializers import CommentSerializer
@@ -36,12 +34,18 @@ class CommentListCreate(generics.ListCreateAPIView):
 
         qs = (
             Comment.objects.filter(anime_id=int(anime), parent__isnull=True)
-            .select_related("user")
+            .select_related("user__profile")
             .prefetch_related(
-                Prefetch("replies", queryset=Comment.objects.select_related("user").order_by("created_at"))
+                Prefetch(
+                    "replies",
+                    queryset=Comment.objects.select_related("user__profile").order_by("created_at"),
+                )
             )
         )
-        qs = qs.filter(episode=int(episode)) if episode and episode.isdigit() else qs.filter(episode__isnull=True)
+        if episode and episode.isdigit():
+            qs = qs.filter(episode=int(episode))
+        else:
+            qs = qs.filter(episode__isnull=True)
         return qs.order_by("-created_at")
 
     def perform_create(self, serializer):

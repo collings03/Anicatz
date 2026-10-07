@@ -1,4 +1,7 @@
+# backend/comments/serializers.py
+from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import serializers
+
 from .models import Comment
 
 
@@ -14,17 +17,20 @@ class CommentSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at"]
 
     def get_avatar(self, obj):
-        # CHECK THIS LINE: return the same avatar value your /auth/profile/ endpoint returns
-        # (for example "preset:lime" or "/media/avatars/x.png"). Adjust if your avatar lives elsewhere.
-        value = getattr(obj.user, "avatar", None)
-        if not value:
-            return None
-        if isinstance(value, str):
-            return value
+        # Avatar lives on accounts.Profile: preset id first, then uploaded photo.
         try:
-            return value.url
-        except ValueError:
-            return None
+            profile = obj.user.profile
+        except (ObjectDoesNotExist, AttributeError):
+            return None  # this user has no Profile row yet
+
+        if profile.avatar_preset:
+            return f"preset:{profile.avatar_preset}"  # the frontend turns this into the built-in image
+        if profile.avatar:
+            try:
+                return profile.avatar.url  # "/media/avatars/x.png", handled by absUrl()
+            except ValueError:
+                return None
+        return None
 
     def get_replies(self, obj):
         if obj.parent_id:
