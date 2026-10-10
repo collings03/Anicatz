@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AVATARS, avatarSrc } from "@/lib/avatar";
 
 // Uses NEXT_PUBLIC_API_URL when set. Otherwise: the deployed backend in production, localhost in dev.
@@ -20,10 +20,30 @@ export type Profile = { username: string; email: string; avatar: string | null }
 type Msg = { type: "ok" | "err"; text: string } | null;
 
 const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
+const PROFILE_CACHE_KEY = "anicatz_profile";
 
 export const authHeaders = (): Record<string, string> => {
   const t = localStorage.getItem("anicatz_access");
   return t ? { Authorization: `Bearer ${t}` } : {};
+};
+
+/** Last known profile, kept in the browser so the picture shows instantly (and survives a slow or failed request). */
+export const cachedProfile = (): Profile | null => {
+  try {
+    const raw = localStorage.getItem(PROFILE_CACHE_KEY);
+    return raw ? (JSON.parse(raw) as Profile) : null;
+  } catch {
+    return null;
+  }
+};
+
+export const cacheProfile = (p: Profile | null) => {
+  try {
+    if (p) localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(p));
+    else localStorage.removeItem(PROFILE_CACHE_KEY);
+  } catch {
+    // storage full or blocked: ignore
+  }
 };
 
 /**
@@ -38,7 +58,7 @@ export const absUrl = (u: string | null) => {
   return u.startsWith("/") ? `${API_ORIGIN}${u}` : u;
 };
 
-/** Stable "random-looking" avatar for a name, so users without a saved avatar always see the same one. */
+/** Stable "random-looking" avatar for a name, so the same user always gets the same one. */
 export const fallbackAvatarId = (seed: string) => {
   if (!AVATARS.length) return "";
   let h = 0;
@@ -46,7 +66,7 @@ export const fallbackAvatarId = (seed: string) => {
   return AVATARS[h % AVATARS.length].id;
 };
 
-/** Avatar image for a profile: the saved one, or the stable fallback if none is saved yet. */
+/** Avatar image for a profile: the saved one, or the stable default if none is saved yet. */
 export const profileAvatarSrc = (p: Profile | null) => {
   if (!p) return null;
   if (p.avatar) return absUrl(p.avatar);
@@ -54,12 +74,68 @@ export const profileAvatarSrc = (p: Profile | null) => {
   return id ? avatarSrc(id) || null : null;
 };
 
+/**
+ * Loads the logged-in user's profile and caches it. Returns null when nobody is logged in
+ * or the token was rejected. If the server is unreachable it returns the last known profile.
+ */
+export async function fetchProfile(): Promise<Profile | null> {
+  const headers = authHeaders();
+  if (!headers.Authorization) return null;
+  try {
+    const r = await fetch(`${API}/auth/profile/`, { headers });
+    if (r.status === 401) {
+      cacheProfile(null);
+      return null;
+    }
+    if (!r.ok) return cachedProfile();
+    const p = (await r.json()) as Profile;
+    cacheProfile(p);
+    return p;
+  } catch {
+    return cachedProfile();
+  }
+}
+
+/**
+ * Use this in the navbar (and anywhere else that shows the avatar).
+ * It shows the cached profile immediately, then refreshes from the server.
+ * After login or logout, call `window.dispatchEvent(new Event("anicatz-auth"))` so it reloads.
+ */
+export function useProfile() {
+  const [profile, setProfile] = useState<Profile | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    setProfile(cachedProfile());
+    const load = () => {
+      fetchProfile().then((p) => {
+        if (alive) setProfile(p);
+      });
+    };
+    load();
+    window.addEventListener("anicatz-auth", load);
+    window.addEventListener("storage", load);
+    return () => {
+      alive = false;
+      window.removeEventListener("anicatz-auth", load);
+      window.removeEventListener("storage", load);
+    };
+  }, []);
+
+  const update = useCallback((p: Profile) => {
+    cacheProfile(p);
+    setProfile(p);
+  }, []);
+
+  return { profile, setProfile: update };
+}
+
 // Remembers who we already tried this page load, so the request is never repeated in a loop.
 const autoAssigned = new Set<string>();
 
 /**
- * If the logged-in user has no avatar, pick a random built-in one ONCE and save it on the account.
- * Use it anywhere the profile is loaded (ProfileSettings already calls it).
+ * If the logged-in user has no avatar, save the stable default one on the account (ONCE).
+ * It is the same picture the app already shows as a fallback, so it never changes between logins.
  */
 export function useAutoAvatar(profile: Profile | null, onUpdate: (p: Profile) => void) {
   useEffect(() => {
@@ -70,17 +146,19 @@ export function useAutoAvatar(profile: Profile | null, onUpdate: (p: Profile) =>
     if (!headers.Authorization) return; // not logged in
     autoAssigned.add(key);
 
-    const pick = AVATARS[Math.floor(Math.random() * AVATARS.length)].id;
     const fd = new FormData();
-    fd.set("avatar_preset", pick);
+    fd.set("avatar_preset", fallbackAvatarId(key));
 
     fetch(`${API}/auth/profile/`, { method: "PATCH", headers, body: fd })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (data && typeof data === "object") onUpdate(data as Profile);
+        if (data && typeof data === "object") {
+          cacheProfile(data as Profile);
+          onUpdate(data as Profile);
+        }
       })
       .catch(() => {
-        // ignore: the stable fallback avatar is still shown
+        // ignore: the stable default avatar is still shown
       });
   }, [profile, onUpdate]);
 }
@@ -120,9 +198,12 @@ const ChevronIcon = ({ open }: { open: boolean }) => (
 );
 
 export function Avatar({ src, name, className }: { src: string | null; name: string; className: string }) {
-  if (src) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [src]);
+
+  if (src && !failed) {
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={src} alt="" className={`${className} object-cover`} />;
+    return <img src={src} alt="" className={`${className} object-cover`} onError={() => setFailed(true)} />;
   }
   return (
     <span className={`${className} grid place-items-center bg-gradient-to-br from-[#c8ff3d] to-[#7c5cff] font-display font-black text-black`}>
@@ -150,7 +231,7 @@ export default function ProfileSettings({
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // NEW: give users without an avatar a random one, saved once.
+  // Give users without an avatar their stable default, saved once.
   useAutoAvatar(profile, onUpdate);
 
   const [open, setOpen] = useState(false);
@@ -220,6 +301,7 @@ export default function ProfileSettings({
           first(data.detail) || first(data.username) || first(data.avatar) || `Could not save changes (HTTP ${r.status}).`
         );
       }
+      cacheProfile(data as unknown as Profile);
       onUpdate(data as unknown as Profile);
       setName((data.username as string) ?? name);
       setFile(null);
@@ -255,7 +337,7 @@ export default function ProfileSettings({
     }
   };
 
-  // CHANGED: falls back to the stable avatar when none is saved yet.
+  // Falls back to the stable default avatar when none is saved yet.
   const shownAvatar = preview ?? (preset ? avatarSrc(preset) : profileAvatarSrc(profile));
   const shownName = profile?.username ?? "A";
   const selectedPreset = file ? "" : (preset ?? currentPreset);
