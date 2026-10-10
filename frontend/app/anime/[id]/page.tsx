@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import AnimeCard from "@/components/AnimeCard";
+import EpisodeSelector from "@/components/EpisodeSelector";
 import WatchlistButton from "@/components/WatchlistButton";
 import { getAnime, getRecommendations } from "@/lib/api";
 import { animeSlug, availableEpisodes, displayTitle, idFromSlug, stripHtml } from "@/lib/types";
@@ -32,7 +33,6 @@ export default async function AnimePage({ params }: { params: Promise<{ id: stri
   const score = anime.averageScore;
   const airing = anime.status === "RELEASING";
   const description = stripHtml(anime.description);
-  const jump = Array.from({ length: Math.min(eps, 30) }, (_, i) => i + 1);
 
   const tiles: [string, string | undefined][] = [
     ["Format", anime.format?.replace("_", " ")],
@@ -206,27 +206,14 @@ export default async function AnimePage({ params }: { params: Promise<{ id: stri
           </div>
         </div>
 
-        {/* Episode chips */}
+        {/* Episodes: numbers up to 100, a range dropdown (1-100, 101-200, ...) beyond that */}
         {canWatch && (
           <section id="episodes" className="mt-10 scroll-mt-28 sm:mt-14">
             <h2 className="mb-4 flex items-center gap-3 text-xl font-semibold">
               <span className="h-5 w-1 rounded-full bg-teal-400" /> Jump to episode
             </h2>
-            <div className="glass flex flex-wrap gap-2 rounded-3xl p-3 sm:p-4">
-              {jump.map((n) => (
-                <Link
-                  key={n}
-                  href={`/watch/${path}/${n}`}
-                  className="grid h-9 min-w-[2.25rem] place-items-center rounded-xl sm:h-10 sm:min-w-[2.5rem] bg-white/5 px-3 text-sm text-white/80 ring-1 ring-white/10 transition hover:-translate-y-0.5 hover:bg-teal-400 hover:text-black hover:ring-teal-400"
-                >
-                  {n}
-                </Link>
-              ))}
-              {eps > jump.length && (
-                <Link href={`/watch/${path}/1`} className="grid h-10 place-items-center rounded-xl px-3 text-sm text-teal-400 hover:underline">
-                  +{eps - jump.length} more in player
-                </Link>
-              )}
+            <div className="glass rounded-3xl p-3 sm:p-4">
+              <EpisodeSelector total={eps} basePath={`/watch/${path}`} />
             </div>
           </section>
         )}

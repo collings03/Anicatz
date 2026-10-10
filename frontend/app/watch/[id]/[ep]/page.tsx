@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 
 import AnimeCard from "@/components/AnimeCard";
 import Comments from "@/components/Comments";
+import EpisodeSelector from "@/components/EpisodeSelector";
 import HistoryTracker from "@/components/HistoryTracker";
 import WatchClient from "@/components/WatchClient";
 
@@ -67,7 +68,7 @@ export default async function WatchPage({
   }
 
   return (
-    <main className="grid w-full gap-6 px-6 py-6 lg:grid-cols-[240px_minmax(0,1fr)_280px]">
+    <main className="grid w-full gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[240px_minmax(0,1fr)_280px]">
       {/* History */}
 
       <HistoryTracker
@@ -77,38 +78,22 @@ export default async function WatchPage({
         image={anime.coverImage.large ?? null}
       />
 
-      {/* Episode list */}
+      {/* Episode list: numbers up to 100, a range dropdown (1-100, 101-200, ...) beyond that */}
 
-      <aside className="order-2 lg:order-1">
+      <aside className="order-2 min-w-0 lg:order-1">
         <h2 className="mb-3 text-lg font-semibold">
           Episodes
         </h2>
 
-        <ul className="max-h-[70vh] divide-y divide-neutral-800 overflow-y-auto rounded-lg border border-neutral-800">
-          {Array.from(
-            { length: total },
-            (_, i) => i + 1
-          ).map((n) => (
-            <li key={n}>
-              <Link
-                href={`/watch/${path}/${n}`}
-                className={`flex items-center gap-3 px-3 py-2.5 text-sm ${
-                  n === episode
-                    ? "bg-teal-400 font-semibold text-black"
-                    : "hover:bg-neutral-900"
-                }`}
-              >
-                <span className="w-6 text-center">
-                  {n}
-                </span>
-
-                <span>
-                  Episode {n}
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <div className="rounded-lg border border-neutral-800 p-3">
+          <EpisodeSelector
+            total={total}
+            basePath={`/watch/${path}`}
+            current={episode}
+            gridClassName="grid-cols-5 sm:grid-cols-8 md:grid-cols-10 lg:grid-cols-5"
+            scrollClassName="max-h-56 lg:max-h-[60vh]"
+          />
+        </div>
       </aside>
 
       {/* Player + comments */}
@@ -147,7 +132,7 @@ export default async function WatchPage({
 
       {/* Anime info */}
 
-      <aside className="order-3 space-y-3">
+      <aside className="order-3 min-w-0 space-y-3">
         <div className="relative mx-auto aspect-[2/3] w-40 overflow-hidden rounded-lg lg:w-full">
           <Image
             src={anime.coverImage.large}
@@ -186,7 +171,7 @@ export default async function WatchPage({
             Recommended for you
           </h2>
 
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4 lg:grid-cols-6 xl:grid-cols-8">
             {recs.map((r) => (
               <AnimeCard
                 key={r.id}
