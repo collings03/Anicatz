@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { Inter, Space_Grotesk } from "next/font/google";
 import Footer from "@/components/Footer";
 import Navbar from "@/components/Navbar";
+import NetworkStatus from "@/components/NetworkStatus";
 import {
   SITE_URL,
   SITE_NAME,
@@ -55,6 +56,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body id="top" className="flex min-h-screen flex-col font-sans antialiased">
+        {/* Shows the "No internet connection" screen when the browser goes offline. */}
+        <NetworkStatus />
         <Navbar />
         {/* md:pt-24 clears the fixed top navbar on desktop. On phones the navbar is at the bottom, so no top padding. */}
         <div className="flex-1 md:pt-24">{children}</div>
