@@ -107,6 +107,7 @@ CORS_ALLOWED_ORIGINS = sorted(
             "http://localhost:3000",
             "http://127.0.0.1:3000",
             "https://anicatz.vercel.app",
+            "https://www.anicatz.com",
             "https://anicatz-7v6u.vercel.app",
         ]
         + env_list("CORS_ALLOWED_ORIGINS")
