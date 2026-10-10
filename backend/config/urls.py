@@ -42,6 +42,9 @@ urlpatterns = [
 
     # Comments
     path("api/", include("comments.urls")),
+    path("api/anime/", include("anime.urls")),
+    path("admin/", admin.site.urls),
+    
 ]
 
 

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import AnimeGrid from "@/components/AnimeGrid";
+import AnimeRail from "@/components/AnimeRail";
 import GenreBox from "@/components/GenreBox";
 import HomeSchedule from "@/components/ScheduleView";
 import Spotlight from "@/components/Spotlight";
@@ -23,12 +24,13 @@ function Section({ title, href, children }: { title: string; href: string; child
 }
 
 export default async function Home() {
-  const [trending, airing, popular, favorite, completed] = await Promise.all([
+  const [trending, airing, popular, favorite, completed, upcoming] = await Promise.all([
     getBrowse({ sort: "trending", per_page: 20 }),
     getBrowse({ sort: "trending", status: "RELEASING", per_page: 18 }),
     getBrowse({ sort: "popular", per_page: 18 }),
     getBrowse({ sort: "favorite", per_page: 10 }),
     getBrowse({ sort: "latest", status: "FINISHED", per_page: 18 }),
+    getBrowse({ sort: "popular", status: "NOT_YET_RELEASED", per_page: 18 }),
   ]);
 
   const spotlight = trending.media.filter((a) => a.bannerImage).slice(0, 8);
@@ -43,7 +45,6 @@ export default async function Home() {
         <TrendingRail items={trending.media.slice(0, 15)} />
       </section>
 
-      {/* Continue watching: hides itself until the viewer has watched something */}
       <div className="min-w-0 px-4 sm:px-6">
         <WatchHistoryRail />
       </div>
@@ -51,6 +52,10 @@ export default async function Home() {
       {/* grid-cols-1 matters: without it the single column grows to its widest child and stretches the page. */}
       <div className="grid grid-cols-1 gap-8 px-4 pt-8 sm:px-6 sm:pt-10 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="min-w-0 space-y-8 sm:space-y-10">
+          <Section title="Upcoming Anime" href="/browse/upcoming">
+            <AnimeRail items={upcoming.media} />
+          </Section>
+
           <Section title="Top Airing" href="/browse/top-airing">
             <AnimeGrid items={airing.media} cols={GRID} mobileRail />
           </Section>
@@ -61,7 +66,7 @@ export default async function Home() {
           <HomeSchedule />
 
           <Section title="Latest Completed" href="/browse/completed">
-            <AnimeGrid items={completed.media} cols={GRID} mobileRail />
+            <AnimeRail items={completed.media} />
           </Section>
         </div>
 

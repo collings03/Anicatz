@@ -88,3 +88,47 @@ def schedule(request):
             return Response({"detail": "invalid range"}, status=400)
         return _guard(anilist.schedule, start, end)
     return _guard(anilist.schedule)
+
+import requests
+from django.http import JsonResponse
+
+
+def episode_check(request):
+    url = request.GET.get("url")
+
+    if not url:
+        return JsonResponse({
+            "available": False,
+            "error": "Missing URL"
+        }, status=400)
+
+    try:
+        response = requests.get(
+            url,
+            timeout=10,
+            headers={
+                "User-Agent": "Mozilla/5.0",
+                "Accept": "application/vnd.apple.mpegurl, application/x-mpegURL, */*",
+            }
+        )
+
+        is_hls = (
+            "#EXTM3U" in response.text
+            if response.ok
+            else False
+        )
+
+        return JsonResponse({
+            "available": response.ok and is_hls,
+            "status": response.status_code,
+            "content_type": response.headers.get(
+                "content-type", ""
+            ),
+            "is_hls": is_hls,
+        })
+
+    except requests.RequestException as e:
+        return JsonResponse({
+            "available": False,
+            "error": str(e)
+        }, status=502)
