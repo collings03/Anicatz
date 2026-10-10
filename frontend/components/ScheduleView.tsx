@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { clientLang } from "@/lib/lang";
 import { animeSlug, displayTitle, type ScheduleItem } from "@/lib/types";
+import ErrorScreen, { isNetworkError } from "@/components/ErrorScreen";
 
 // The schedule endpoint on your deployed backend (same link that returns the JSON list):
 // https://anicatz-7v6u.vercel.app/api/anime/schedule/?start=...&end=...
@@ -94,7 +95,7 @@ export default function HomeSchedule() {
     const k = keyOf(d);
 
     // Clear any old error first, so switching to an already-loaded day
-    // doesn't keep showing "Couldn't load this day".
+    // doesn't keep showing the error screen.
     setError(null);
     if (cache[k]) return;
 
@@ -195,13 +196,12 @@ export default function HomeSchedule() {
 
       {/* Rows */}
       {error ? (
-        <p className="text-sm text-neutral-400">
-          Couldn&apos;t load this day.{" "}
-          <button className="underline" onClick={() => setRetry((n) => n + 1)}>
-            Retry
-          </button>
-          <span className="mt-1 block break-all text-xs text-neutral-500">{error}</span>
-        </p>
+        <ErrorScreen
+          fullScreen={false}
+          variant={isNetworkError(error) ? "network" : "server"}
+          detail={error}
+          onRetry={() => setRetry((n) => n + 1)}
+        />
       ) : !items ? (
         <p className="text-sm text-neutral-400">Loading schedule...</p>
       ) : sorted.length === 0 ? (

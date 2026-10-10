@@ -494,3 +494,4 @@ main {
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .liquid-nav, .liquid-panel { background: rgba(20,20,30,.92); }
 }
+
