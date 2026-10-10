@@ -6,10 +6,14 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { CATEGORIES, FORMAT_OPTIONS, GENRES, SORT_OPTIONS, STATUS_OPTIONS } from "@/lib/categories";
 import { clientLang } from "@/lib/lang";
-import ProfileSettings, { Avatar, absUrl, authHeaders, type Profile } from "@/components/Profilemenu";
+import ProfileSettings, { Avatar, profileAvatarSrc, useAutoAvatar, useProfile, type Profile } from "@/components/Profilemenu";
 import { animeSlug, displayTitle, type Anime } from "@/lib/types";
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
+// Same rule as Profilemenu/login: env var if set, else production backend in production, localhost in dev.
+const API = (
+  process.env.NEXT_PUBLIC_API_URL ??
+  (process.env.NODE_ENV === "production" ? "https://anicatz-7v6u.vercel.app/api" : "http://localhost:8000/api")
+).replace(/\/+$/, "");
 
 const svg = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" } as const;
 
@@ -95,7 +99,11 @@ export default function Navbar() {
   const [mounted, setMounted] = useState(false);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [compact, setCompact] = useState(false);
-  const [profile, setProfile] = useState<Profile | null>(null);
+  // Shared profile logic: shows the cached profile instantly, refreshes from the server,
+  // and reloads whenever login/logout fires the "anicatz-auth" event.
+  const { profile, setProfile } = useProfile();
+  // Saves the stable default avatar on the account for users who have none (once).
+  useAutoAvatar(profile, setProfile);
   // Keeps the menu in the page for a moment after closing so it can fade out smoothly.
   const [menuMounted, setMenuMounted] = useState(false);
 
@@ -106,14 +114,17 @@ export default function Navbar() {
   // Stay in sync with changes made on the /profile page.
   useEffect(() => {
     const onTheme = () => setTheme(document.documentElement.dataset.theme === "light" ? "light" : "dark");
-    const onProfile = (e: Event) => setProfile((e as CustomEvent<Profile>).detail);
+    const onProfile = (e: Event) => {
+      const p = (e as CustomEvent<Profile>).detail;
+      if (p) setProfile(p);
+    };
     window.addEventListener("anicatz-theme", onTheme);
     window.addEventListener("anicatz-profile", onProfile);
     return () => {
       window.removeEventListener("anicatz-theme", onTheme);
       window.removeEventListener("anicatz-profile", onProfile);
     };
-  }, []);
+  }, [setProfile]);
 
   useEffect(() => {
     if (menuOpen) {
@@ -258,6 +269,7 @@ export default function Navbar() {
   const logout = () => {
     localStorage.removeItem("anicatz_access");
     localStorage.removeItem("anicatz_refresh");
+    // useProfile reacts to this event, sees no token, and clears the cached profile.
     window.dispatchEvent(new Event("anicatz-auth"));
     setMenuOpen(false);
   };
@@ -269,19 +281,8 @@ export default function Navbar() {
   // Stay full size while a menu or the search is open.
   const compactNow = compact && !menuOpen && !searchOpen;
 
-  // Load the profile (for the round avatar) while logged in.
-  useEffect(() => {
-    if (!authed) {
-      setProfile(null);
-      return;
-    }
-    const ctrl = new AbortController();
-    fetch(`${API}/auth/profile/`, { headers: authHeaders(), signal: ctrl.signal })
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then(setProfile)
-      .catch(() => {});
-    return () => ctrl.abort();
-  }, [authed]);
+  // Picture shown in the round buttons: saved avatar, or the stable default.
+  const avatarUrl = profileAvatarSrc(profile);
 
   const showDropdown = searchOpen && (showFilters || q.trim().length >= 2);
 
@@ -494,7 +495,7 @@ export default function Navbar() {
             }`}
           >
             {authed ? (
-              <Avatar src={absUrl(profile?.avatar ?? null)} name={profile?.username ?? "A"} className="h-full w-full text-base" />
+              <Avatar src={avatarUrl} name={profile?.username ?? "A"} className="h-full w-full text-base" />
             ) : (
               <UserIcon />
             )}
@@ -515,7 +516,7 @@ export default function Navbar() {
             {/* Desktop: avatar when logged in, dots when logged out */}
             {authed ? (
               <span className="hidden h-full w-full md:block">
-                <Avatar src={absUrl(profile?.avatar ?? null)} name={profile?.username ?? "A"} className="h-full w-full text-lg" />
+                <Avatar src={avatarUrl} name={profile?.username ?? "A"} className="h-full w-full text-lg" />
               </span>
             ) : (
               <span className="hidden md:block"><DotsIcon /></span>
@@ -529,7 +530,7 @@ export default function Navbar() {
                 <>
                   {/* Mobile: opens the full Profile page */}
                   <Link href="/profile" className="mb-3 flex items-center gap-3 rounded-2xl bg-white/5 p-2 hover:bg-white/10 md:hidden">
-                    <Avatar src={absUrl(profile?.avatar ?? null)} name={profile?.username ?? "A"} className="h-11 w-11 shrink-0 rounded-full text-lg" />
+                    <Avatar src={avatarUrl} name={profile?.username ?? "A"} className="h-11 w-11 shrink-0 rounded-full text-lg" />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-semibold">{profile?.username ?? "Your profile"}</span>
                       <span className="block truncate text-xs text-white/50">Profile settings</span>

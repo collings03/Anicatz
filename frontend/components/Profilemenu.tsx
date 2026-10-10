@@ -80,7 +80,10 @@ export const profileAvatarSrc = (p: Profile | null) => {
  */
 export async function fetchProfile(): Promise<Profile | null> {
   const headers = authHeaders();
-  if (!headers.Authorization) return null;
+  if (!headers.Authorization) {
+    cacheProfile(null); // logged out: drop the previous user's cached profile
+    return null;
+  }
   try {
     const r = await fetch(`${API}/auth/profile/`, { headers });
     if (r.status === 401) {
@@ -106,7 +109,8 @@ export function useProfile() {
 
   useEffect(() => {
     let alive = true;
-    setProfile(cachedProfile());
+    // Only trust the cache while a token exists, so a logged-out visitor never sees an old picture.
+    setProfile(localStorage.getItem("anicatz_access") ? cachedProfile() : null);
     const load = () => {
       fetchProfile().then((p) => {
         if (alive) setProfile(p);
