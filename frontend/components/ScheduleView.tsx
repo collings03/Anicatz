@@ -5,19 +5,12 @@ import { clientLang } from "@/lib/lang";
 import { animeSlug, displayTitle, type ScheduleItem } from "@/lib/types";
 import ErrorScreen, { isNetworkError } from "@/components/ErrorScreen";
 
-// Same rule as the rest of the app: env var if set, else the deployed backend in production, localhost in dev.
-const API = (
-  process.env.NEXT_PUBLIC_API_URL ??
-  (process.env.NODE_ENV === "production" ? "https://anicatz-7v6u.vercel.app/api" : "http://localhost:8000/api")
-).replace(/\/+$/, "");
-const SCHEDULE_URL = `${API}/anime/schedule/`;
-
+// The schedule endpoint on your deployed backend (same link that returns the JSON list):
+// https://anicatz-7v6u.vercel.app/api/anime/schedule/?start=...&end=...
+const SCHEDULE_URL = "https://anicatz-7v6u.vercel.app/api/anime/schedule/";
 const VISIBLE = 7;
 const GAP = 12; // px, matches gap-3
-const WINDOW = 3; // one request loads the selected day plus/minus this many days
 const keyOf = (d: Date) => `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
-const dayStart = (d: Date) => Math.floor(new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() / 1000);
-const dayEnd = (d: Date) => Math.floor(new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime() / 1000);
 
 /** Every day from the 1st of last month to the end of this month. */
 function buildDays() {
@@ -57,21 +50,6 @@ function Clock() {
   );
 }
 
-/** Placeholder rows shown while a day loads, so the page never looks empty. */
-function Skeleton() {
-  return (
-    <ul className="divide-y divide-neutral-800" aria-busy="true" aria-label="Loading schedule">
-      {Array.from({ length: 5 }).map((_, i) => (
-        <li key={i} className="flex items-center gap-3 px-1 py-3 sm:gap-4 sm:px-2">
-          <span className="h-4 w-11 shrink-0 animate-pulse rounded bg-neutral-800 sm:w-12" />
-          <span className="h-4 flex-1 animate-pulse rounded bg-neutral-800" />
-          <span className="h-4 w-12 shrink-0 animate-pulse rounded bg-neutral-800" />
-        </li>
-      ))}
-    </ul>
-  );
-}
-
 export default function HomeSchedule() {
   const [days, setDays] = useState<Date[]>([]);
   const [todayIdx, setTodayIdx] = useState(0);
@@ -82,8 +60,6 @@ export default function HomeSchedule() {
   const [showAll, setShowAll] = useState(false);
   const strip = useRef<HTMLDivElement>(null);
   const tabs = useRef<(HTMLButtonElement | null)[]>([]);
-  // Days whose request is already on its way, so clicking a neighbouring day never starts a second request.
-  const pending = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const { days, today } = buildDays();
@@ -113,54 +89,33 @@ export default function HomeSchedule() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [days.length, todayIdx]);
 
-  // Loads the selected day AND its neighbours in ONE request, so clicking nearby days is instant.
   useEffect(() => {
     if (!days.length) return;
-    const k = keyOf(days[selected]);
+    const d = days[selected];
+    const k = keyOf(d);
 
-    // Clear any old error first, so switching to an already-loaded day doesn't keep showing it.
+    // Clear any old error first, so switching to an already-loaded day
+    // doesn't keep showing the error screen.
     setError(null);
-    if (cache[k] || pending.current.has(k)) return;
+    if (cache[k]) return;
 
-    const from = Math.max(0, selected - WINDOW);
-    const to = Math.min(days.length - 1, selected + WINDOW);
-    const keys: string[] = [];
-    for (let i = from; i <= to; i++) {
-      const kk = keyOf(days[i]);
-      if (!cache[kk]) {
-        keys.push(kk);
-        pending.current.add(kk);
-      }
-    }
-
-    const url = `${SCHEDULE_URL}?start=${dayStart(days[from])}&end=${dayEnd(days[to])}&lang=${clientLang()}`;
-    fetch(url)
+    const ctrl = new AbortController();
+    const start = Math.floor(new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() / 1000);
+    const end = Math.floor(new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime() / 1000);
+    const url = `${SCHEDULE_URL}?start=${start}&end=${end}&lang=${clientLang()}`;
+    fetch(url, { signal: ctrl.signal })
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
       })
-      .then((data: ScheduleItem[]) => {
-        // Split the single response into one list per day (days with nothing count as loaded too).
-        const buckets: Record<string, ScheduleItem[]> = {};
-        for (const kk of keys) buckets[kk] = [];
-        for (const it of Array.isArray(data) ? data : []) {
-          const kk = keyOf(new Date(it.airingAt * 1000));
-          if (kk in buckets) buckets[kk].push(it);
-        }
-        setCache((c) => {
-          const next = { ...c };
-          for (const kk in buckets) if (!(kk in next)) next[kk] = buckets[kk];
-          return next;
-        });
-      })
+      .then((data: ScheduleItem[]) => setCache((c) => ({ ...c, [k]: data })))
       .catch((e) => {
+        if (e.name === "AbortError") return;
         console.error("Schedule request failed:", url, e);
         // Shows the real reason on screen (e.g. "HTTP 502" or "Failed to fetch") so it can be fixed fast.
-        setError(`${e?.message || "Network error"} - ${url.split("?")[0]}`);
-      })
-      .finally(() => {
-        for (const kk of keys) pending.current.delete(kk);
+        setError(`${e.message || "Network error"} - ${url.split("?")[0]}`);
       });
+    return () => ctrl.abort();
   }, [days, selected, cache, retry]);
 
   const pick = (i: number) => {
@@ -240,7 +195,7 @@ export default function HomeSchedule() {
       </div>
 
       {/* Rows */}
-      {error && !items ? (
+      {error ? (
         <ErrorScreen
           fullScreen={false}
           variant={isNetworkError(error) ? "network" : "server"}
@@ -248,7 +203,7 @@ export default function HomeSchedule() {
           onRetry={() => setRetry((n) => n + 1)}
         />
       ) : !items ? (
-        <Skeleton />
+        <p className="text-sm text-neutral-400">Loading schedule...</p>
       ) : sorted.length === 0 ? (
         <p className="text-sm text-neutral-400">Nothing scheduled for this day.</p>
       ) : (
