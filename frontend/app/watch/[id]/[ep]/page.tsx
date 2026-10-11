@@ -9,7 +9,7 @@ import HistoryTracker from "@/components/HistoryTracker";
 import WatchClient from "@/components/WatchClient";
 
 import {
-  getAnime,
+  getAnimeOrNull,
   getRecommendations,
 } from "@/lib/api";
 
@@ -38,7 +38,7 @@ export default async function WatchPage({
   }
 
   const [anime, recs] = await Promise.all([
-    getAnime(id).catch(() => null),
+    getAnimeOrNull(id),
     getRecommendations(id).catch(() => []),
   ]);
 

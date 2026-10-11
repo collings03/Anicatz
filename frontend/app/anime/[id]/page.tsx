@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import AnimeCard from "@/components/AnimeCard";
 import EpisodeSelector from "@/components/EpisodeSelector";
 import WatchlistButton from "@/components/WatchlistButton";
-import { getAnime, getRecommendations } from "@/lib/api";
+import { getAnimeOrNull, getRecommendations } from "@/lib/api";
 import { animeSlug, availableEpisodes, displayTitle, idFromSlug, stripHtml } from "@/lib/types";
 
 function airsIn(ts: number) {
@@ -21,7 +21,7 @@ export default async function AnimePage({ params }: { params: Promise<{ id: stri
   const id = idFromSlug(slug);
   if (!id) notFound();
   const [anime, recs] = await Promise.all([
-    getAnime(id).catch(() => null),
+    getAnimeOrNull(id),
     getRecommendations(id).catch(() => []),
   ]);
   if (!anime) notFound();
