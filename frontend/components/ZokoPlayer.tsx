@@ -31,12 +31,20 @@ const NOTICE_KEY = "anicatz-server2-notice-dismissed";
 
 // Blocks popups and top-level redirects from the embedded players.
 // Deliberately omits allow-popups and allow-top-navigation.
-const SANDBOX =
-  "allow-scripts allow-same-origin allow-forms allow-presentation allow-orientation-lock allow-pointer-lock allow-modals";
+// Popups and top-level redirects stay blocked in both lists (no allow-popups,
+// no allow-top-navigation). The mobile list only adds permissions that player
+// controls commonly need on phones.
+const SANDBOX_DESKTOP =
+  "allow-scripts allow-same-origin allow-forms allow-presentation allow-orientation-lock";
 
-// The sandbox can break the embedded player's own controls on some phones.
-// Keep this false until you confirm the controls work with it on.
-const USE_SANDBOX = false;
+const SANDBOX_MOBILE =
+  "allow-scripts allow-same-origin allow-forms allow-presentation allow-orientation-lock allow-pointer-lock allow-modals allow-downloads";
+
+// Turn the sandbox on or off per server. If one server's controls break, set it to false.
+const SANDBOX_ON: Record<Server, boolean> = {
+  zoko: true,
+  cosmic: true,
+};
 
 type Props = {
   malId: number;
@@ -526,6 +534,12 @@ export default function ZokoPlayer({
 
   const src = server === "cosmic" ? cosmicUrl : zokoSrc;
 
+  const sandbox = !SANDBOX_ON[server]
+    ? undefined
+    : isMobile
+      ? SANDBOX_MOBILE
+      : SANDBOX_DESKTOP;
+
   // --------------------------------------------------
   // Change server
   // --------------------------------------------------
@@ -873,10 +887,10 @@ export default function ZokoPlayer({
 
           {src && !cosmicLoading && !cosmicError && (
             <iframe
-              key={`${src}|${reload}`}
+              key={`${src}|${reload}|${sandbox ?? "none"}`}
               ref={ref}
               src={src}
-              sandbox={USE_SANDBOX ? SANDBOX : undefined}
+              sandbox={sandbox}
               title={`Episode ${episode}`}
               allow="fullscreen; autoplay; picture-in-picture; encrypted-media"
               allowFullScreen
