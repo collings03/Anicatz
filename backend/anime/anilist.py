@@ -11,9 +11,12 @@ from django.core.cache import cache
 
 URL = "https://graphql.anilist.co"
 COOLDOWN_KEY = "anilist:cooldown"
+LIMIT_KEY = "anilist:limit"  # AniList's own per-minute limit, learned from its response headers
 MAX_RETRY_WAIT = 2  # seconds: we only wait for a rate limit that clears almost at once
 MAX_SCHEDULE_PAGES = 8
-SCHEDULE_WORKERS = 3  # parallel page requests for one day of the schedule
+SCHEDULE_WORKERS = 2  # parallel page requests for one day of the schedule (was 3: gentler on the limit)
+DEFAULT_LIMIT = 60  # used until AniList tells us its real limit (it is 90, or 30 when degraded)
+SAFETY_MARGIN = 8  # stay this many requests under the limit so we never trigger a real block
 
 # One shared session reuses the connection, so repeated calls skip the TLS handshake.
 SESSION = requests.Session()
@@ -58,6 +61,26 @@ STATUSES = {"RELEASING", "FINISHED", "NOT_YET_RELEASED"}
 FORMATS = {"TV", "MOVIE", "OVA", "ONA", "SPECIAL", "TV_SHORT"}
 
 
+def _budget_ok():
+    """Counts the requests we send to AniList in the current minute and refuses to go over its limit.
+    Better to answer from the saved copy than to be blocked, because a block lasts a full minute for everyone."""
+    limit = cache.get(LIMIT_KEY) or DEFAULT_LIMIT
+    bucket = f"anilist:count:{int(time.time() // 60)}"
+    cache.add(bucket, 0, 75)
+    try:
+        used = cache.incr(bucket)
+    except ValueError:  # the counter expired between add and incr
+        cache.set(bucket, 1, 75)
+        used = 1
+    return used <= max(5, limit - SAFETY_MARGIN)
+
+
+def _remember_limit(response):
+    header = response.headers.get("X-RateLimit-Limit", "")
+    if header.isdigit():
+        cache.set(LIMIT_KEY, int(header), 3600)
+
+
 def run(gql, variables=None):
     key = "anilist:" + hashlib.sha256(json.dumps([gql, variables], sort_keys=True).encode()).hexdigest()
     cached = cache.get(key)
@@ -68,11 +91,17 @@ def run(gql, variables=None):
     if cache.get(COOLDOWN_KEY):
         raise RateLimited("AniList rate limit exceeded")
 
+    # Out of our own per-minute budget: the caller falls back to the last saved copy.
+    if not _budget_ok():
+        raise RateLimited("AniList rate limit exceeded")
+
     for attempt in range(2):
         try:
             r = SESSION.post(URL, json={"query": gql, "variables": variables or {}}, timeout=(3.05, 8))
         except requests.RequestException as exc:
             raise AniListError(str(exc)) from exc
+
+        _remember_limit(r)
 
         if r.status_code == 429:
             try:

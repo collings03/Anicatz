@@ -128,6 +128,10 @@ AUTH_PASSWORD_VALIDATORS = [
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": ["rest_framework_simplejwt.authentication.JWTAuthentication"],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.AllowAny"],
+    # DRF treats ?format=... as "which renderer do you want" (json, api). Our anime filter is also
+    # called "format" (TV, MOVIE...), so DRF answered 404 for ?format=TV before the view even ran.
+    # Setting this to None switches that behaviour off, so ?format=TV reaches the browse view.
+    "URL_FORMAT_OVERRIDE": None,
 }
 
 # Login tokens. The frontend (lib/auth.ts) renews the short access token automatically.

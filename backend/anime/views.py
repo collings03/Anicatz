@@ -1,3 +1,4 @@
+import hashlib
 import ipaddress
 import socket
 import time
@@ -36,9 +37,17 @@ def _no_store(response):
     return response
 
 
+def _stale_key(request):
+    """Same key for ?lang=jp and the normal request: the title language is applied later by the middleware,
+    so both can share one saved copy instead of needing their own."""
+    params = sorted((k, v) for k, v in request.GET.items() if k != "lang")
+    raw = request.path + "?" + "&".join(f"{k}={v}" for k, v in params)
+    return "stale:" + hashlib.sha256(raw.encode()).hexdigest()
+
+
 def _guard(request, fn, *args, ttl=600):
     """Runs an AniList call. On success: CDN-cacheable answer + a stale copy saved. On failure: the stale copy, or a clean error."""
-    key = "stale:" + request.get_full_path()
+    key = _stale_key(request)
     try:
         data = fn(*args)
     except anilist.AniListError as exc:
