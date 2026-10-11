@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import type { Anime, AnimePage } from "./types";
 
 const API =
-  process.env.NEXT_PUBLIC_API_URL ?? "https://anicatz-7v6u.vercel.app/api";
+  process.env.NEXT_PUBLIC_API_URL ?? "https://anicatz-1.onrender.com/api";
 
 async function get<T>(path: string): Promise<T> {
   const jp = (await cookies()).get("title_lang")?.value === "jp";
