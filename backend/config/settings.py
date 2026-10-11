@@ -48,6 +48,7 @@ ALLOWED_HOSTS = sorted(
             "anicatz.com",
             "www.anicatz.com",
             "anicatz.onrender.com",
+            "anicatz-1.onrender.com",  # your live Render backend
         ]
         + env_list("DJANGO_ALLOWED_HOSTS")
         # Render tells the app its own address (my-service.onrender.com), so it never needs adding by hand.
@@ -102,6 +103,7 @@ TEMPLATES = [{
 # On Vercel the project folder is read-only, so the SQLite fallback must live in /tmp.
 # That data is temporary and is lost between invocations: set DATABASE_URL to a hosted
 # Postgres (Neon, Supabase, Vercel Postgres) for real accounts/watchlists/comments.
+# Render's disk is also wiped on every deploy unless you attach a paid disk, so set DATABASE_URL there too.
 _default_sqlite = "/tmp/db.sqlite3" if ON_VERCEL else str(BASE_DIR / "db.sqlite3")
 DATABASES = {
     "default": dj_database_url.parse(
@@ -152,10 +154,15 @@ CORS_ALLOWED_ORIGINS = sorted(
             "https://anicatz.com",
             "https://www.anicatz.com",
             "https://anicatz.onrender.com",
+            "https://anicatz-1.onrender.com",
         ]
         + env_list("CORS_ALLOWED_ORIGINS")
     )
 )
+
+# Vercel preview deployments get their own random URLs (anicatz-xxxx-yourname.vercel.app).
+# This lets those previews call the API too, without listing each one.
+CORS_ALLOWED_ORIGIN_REGEXES = [r"^https://anicatz[a-z0-9-]*\.vercel\.app$"]
 
 # Needed for admin / session-cookie POSTs coming from these HTTPS sites.
 CSRF_TRUSTED_ORIGINS = [o for o in CORS_ALLOWED_ORIGINS if o.startswith("https://")]
@@ -172,4 +179,11 @@ STATIC_URL = "static/"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+
+# WhiteNoise compresses the collected static files (admin CSS/JS) for gunicorn.
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedStaticFilesStorage"},
+}
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
