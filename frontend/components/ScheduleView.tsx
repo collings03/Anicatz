@@ -67,13 +67,17 @@ function writeEntry(id: string, data: ScheduleItem[]) {
   }
 }
 
-/** GET with one automatic retry for cold starts (5xx) and dropped connections. */
+/**
+ * GET with one automatic retry for cold starts (5xx) and dropped connections.
+ * The wait is longer than before (2.5s) so a backend that is rate-limited by AniList
+ * gets a little room instead of being hit again right away.
+ */
 async function fetchJson(url: string, attempt = 0): Promise<ScheduleItem[]> {
   try {
     const r = await fetch(url);
     if (!r.ok) {
       if (attempt < 1 && r.status >= 500) {
-        await sleep(1200);
+        await sleep(2500);
         return fetchJson(url, 1);
       }
       throw new Error(`HTTP ${r.status}`);
@@ -81,7 +85,7 @@ async function fetchJson(url: string, attempt = 0): Promise<ScheduleItem[]> {
     return (await r.json()) as ScheduleItem[];
   } catch (e) {
     if (attempt < 1 && e instanceof TypeError) {
-      await sleep(1200);
+      await sleep(2500);
       return fetchJson(url, 1);
     }
     throw e;
@@ -211,17 +215,16 @@ export default function HomeSchedule() {
       timers.forEach((t) => window.clearTimeout(t));
     };
 
-    // Warm the next day and the previous one, spaced out so AniList's rate limit isn't hit.
+    // Warm only the NEXT day, a couple of seconds later, so the backend (and AniList's rate limit)
+    // is not hit with several requests at once. The previous day loads when someone clicks it.
     const prefetch = () => {
-      [1, -1].forEach((offset, i) => {
-        const n = days[selected + offset];
-        if (!n || readEntry(idOf(lang, n))) return;
-        timers.push(
-          window.setTimeout(() => {
-            loadDay(n, lang).catch(() => {});
-          }, 800 * (i + 1)),
-        );
-      });
+      const n = days[selected + 1];
+      if (!n || readEntry(idOf(lang, n))) return;
+      timers.push(
+        window.setTimeout(() => {
+          loadDay(n, lang).catch(() => {});
+        }, 2000),
+      );
     };
 
     setError(null);
@@ -349,8 +352,11 @@ export default function HomeSchedule() {
                 : `/anime/${animeSlug(s.media)}`;
               return (
                 <li key={`${s.media.id}-${s.episode}`}>
+                  {/* prefetch={false}: do not load every row's page in the background.
+                      Each prefetch asks the backend (and AniList) for that anime, which caused bursts of 503s. */}
                   <Link
                     href={href}
+                    prefetch={false}
                     title={playable ? `Watch episode ${s.episode}` : aired ? "Open details" : "Not aired yet - open details"}
                     className="group flex items-center gap-3 px-1 py-3 hover:bg-neutral-800/60 sm:gap-4 sm:px-2"
                   >
