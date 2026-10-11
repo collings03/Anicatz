@@ -1,7 +1,11 @@
 // frontend/app/api/proxy/[...path]/route.ts
 import type { NextRequest } from "next/server";
 
-const BACKEND = (process.env.BACKEND_URL ?? "http://localhost:8000/api").replace(/\/+$/, "");
+const BACKEND = (
+  process.env.BACKEND_URL ??
+  process.env.NEXT_PUBLIC_API_URL ??
+  "https://anicatz-1.onrender.com/api"
+).replace(/\/+$/, "");
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
   const { path } = await params;
