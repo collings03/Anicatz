@@ -2,12 +2,7 @@
 // Save as: frontend/app/login/page.tsx
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-
-// Uses NEXT_PUBLIC_API_URL when set. Otherwise: the deployed backend in production, localhost in dev.
-const API = (
-  process.env.NEXT_PUBLIC_API_URL ??
-  (process.env.NODE_ENV === "production" ? "https://anicatz-7v6u.vercel.app/api" : "http://localhost:8000/api")
-).replace(/\/+$/, "");
+import { API, setTokens } from "@/lib/auth";
 
 const input =
   "w-full rounded-2xl bg-[#0f0e24] px-4 py-3 text-white placeholder:text-white/35 outline-none ring-1 ring-white/10 transition focus:ring-2 focus:ring-[#d9f96a]";
@@ -211,9 +206,8 @@ export default function LoginPage() {
       const t = await post("/auth/token/", { username, password });
       if (!t.ok) throw new Error(t.status >= 500 ? await failMsg(t) : "Wrong username or password.");
       const { access, refresh } = await t.json();
-      localStorage.setItem("anicatz_access", access);
-      localStorage.setItem("anicatz_refresh", refresh);
-      window.dispatchEvent(new Event("anicatz-auth"));
+      // Saves both tokens and tells the rest of the app (navbar, avatar) that someone logged in.
+      setTokens({ access, refresh });
       router.push("/");
     } catch (err) {
       setError(

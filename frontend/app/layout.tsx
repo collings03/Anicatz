@@ -1,6 +1,7 @@
 // frontend/app/layout.tsx
 import type { Metadata } from "next";
 import { Inter, Space_Grotesk } from "next/font/google";
+import AuthKeepAlive from "@/components/AuthKeepAlive";
 import Footer from "@/components/Footer";
 import Navbar from "@/components/Navbar";
 import NetworkStatus from "@/components/NetworkStatus";
@@ -66,6 +67,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body id="top" className="flex min-h-screen flex-col font-sans antialiased">
         {/* Shows the "No internet connection" screen when the browser goes offline. */}
         <NetworkStatus />
+        {/* Keeps the login token fresh in the background so you stay logged in. */}
+        <AuthKeepAlive />
         <Navbar />
         {/* md:pt-24 clears the fixed top navbar on desktop. On phones the navbar is at the bottom, so no top padding. */}
         <div className="flex-1 md:pt-24">{children}</div>

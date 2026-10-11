@@ -8,9 +8,103 @@ import ErrorScreen, { isNetworkError } from "@/components/ErrorScreen";
 // The schedule endpoint on your deployed backend (same link that returns the JSON list):
 // https://anicatz-7v6u.vercel.app/api/anime/schedule/?start=...&end=...
 const SCHEDULE_URL = "https://anicatz-7v6u.vercel.app/api/anime/schedule/";
+const SCHEDULE_ORIGIN = (() => {
+  try {
+    return new URL(SCHEDULE_URL).origin;
+  } catch {
+    return "";
+  }
+})();
 const VISIBLE = 7;
 const GAP = 12; // px, matches gap-3
 const keyOf = (d: Date) => `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+
+/* ---------- Fast loading: shared cache + saved copy + prefetch ---------- */
+
+type Entry = { t: number; data: ScheduleItem[] };
+const FRESH_MS = 5 * 60 * 1000; // newer than this: no request at all
+const STALE_MS = 6 * 60 * 60 * 1000; // newer than this: show it instantly, refresh in the background
+const PREFIX = "anicatz:sched:";
+
+const memory = new Map<string, Entry>(); // lives as long as the tab
+const inflight = new Map<string, Promise<ScheduleItem[]>>(); // one request per day, even if asked twice
+
+const idOf = (lang: string, d: Date) => `${lang}:${keyOf(d)}`;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Day from memory, or from the copy saved in the browser (so a page reload is instant). */
+function readEntry(id: string): Entry | undefined {
+  const m = memory.get(id);
+  if (m) return m;
+  try {
+    const raw = localStorage.getItem(PREFIX + id);
+    if (!raw) return undefined;
+    const e = JSON.parse(raw) as Entry;
+    if (!e?.t || !Array.isArray(e.data) || Date.now() - e.t > STALE_MS) {
+      localStorage.removeItem(PREFIX + id);
+      return undefined;
+    }
+    memory.set(id, e);
+    return e;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeEntry(id: string, data: ScheduleItem[]) {
+  const e: Entry = { t: Date.now(), data };
+  memory.set(id, e);
+  try {
+    localStorage.setItem(PREFIX + id, JSON.stringify(e));
+  } catch {
+    // Storage full: drop the saved schedule copies and carry on with memory only.
+    try {
+      Object.keys(localStorage)
+        .filter((k) => k.startsWith(PREFIX))
+        .forEach((k) => localStorage.removeItem(k));
+    } catch {}
+  }
+}
+
+/** GET with one automatic retry for cold starts (5xx) and dropped connections. */
+async function fetchJson(url: string, attempt = 0): Promise<ScheduleItem[]> {
+  try {
+    const r = await fetch(url);
+    if (!r.ok) {
+      if (attempt < 1 && r.status >= 500) {
+        await sleep(1200);
+        return fetchJson(url, 1);
+      }
+      throw new Error(`HTTP ${r.status}`);
+    }
+    return (await r.json()) as ScheduleItem[];
+  } catch (e) {
+    if (attempt < 1 && e instanceof TypeError) {
+      await sleep(1200);
+      return fetchJson(url, 1);
+    }
+    throw e;
+  }
+}
+
+function loadDay(d: Date, lang: string): Promise<ScheduleItem[]> {
+  const id = idOf(lang, d);
+  const running = inflight.get(id);
+  if (running) return running;
+
+  const start = Math.floor(new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() / 1000);
+  const end = Math.floor(new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime() / 1000);
+  const url = `${SCHEDULE_URL}?start=${start}&end=${end}&lang=${lang}`;
+
+  const p = fetchJson(url)
+    .then((data) => {
+      writeEntry(id, data);
+      return data;
+    })
+    .finally(() => inflight.delete(id));
+  inflight.set(id, p);
+  return p;
+}
 
 /** Every day from the 1st of last month to the end of this month. */
 function buildDays() {
@@ -50,11 +144,26 @@ function Clock() {
   );
 }
 
+/** Placeholder rows shown while a day loads: feels faster than the words "Loading schedule...". */
+function ScheduleSkeleton() {
+  return (
+    <ul className="divide-y divide-neutral-800" aria-busy="true" aria-label="Loading schedule">
+      {Array.from({ length: 6 }, (_, i) => (
+        <li key={i} className="flex items-center gap-3 px-1 py-3 sm:gap-4 sm:px-2">
+          <span className="h-4 w-11 shrink-0 animate-pulse rounded bg-neutral-800 sm:w-12" />
+          <span className="h-4 flex-1 animate-pulse rounded bg-neutral-800" style={{ maxWidth: `${55 + ((i * 13) % 35)}%` }} />
+          <span className="h-4 w-10 shrink-0 animate-pulse rounded bg-neutral-800" />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export default function HomeSchedule() {
   const [days, setDays] = useState<Date[]>([]);
   const [todayIdx, setTodayIdx] = useState(0);
   const [selected, setSelected] = useState(0);
-  const [cache, setCache] = useState<Record<string, ScheduleItem[]>>({});
+  const [, setTick] = useState(0); // re-render when a day finishes loading into the shared cache
   const [error, setError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
   const [showAll, setShowAll] = useState(false);
@@ -89,34 +198,52 @@ export default function HomeSchedule() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [days.length, todayIdx]);
 
+  // Load the selected day. Saved or in-memory copies show instantly; the network is only used when needed.
   useEffect(() => {
     if (!days.length) return;
+    const lang = clientLang();
     const d = days[selected];
-    const k = keyOf(d);
+    let alive = true;
+    const timers: number[] = [];
+    const cleanup = () => {
+      alive = false;
+      timers.forEach((t) => window.clearTimeout(t));
+    };
 
-    // Clear any old error first, so switching to an already-loaded day
-    // doesn't keep showing the error screen.
-    setError(null);
-    if (cache[k]) return;
-
-    const ctrl = new AbortController();
-    const start = Math.floor(new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() / 1000);
-    const end = Math.floor(new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime() / 1000);
-    const url = `${SCHEDULE_URL}?start=${start}&end=${end}&lang=${clientLang()}`;
-    fetch(url, { signal: ctrl.signal })
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
-      .then((data: ScheduleItem[]) => setCache((c) => ({ ...c, [k]: data })))
-      .catch((e) => {
-        if (e.name === "AbortError") return;
-        console.error("Schedule request failed:", url, e);
-        // Shows the real reason on screen (e.g. "HTTP 502" or "Failed to fetch") so it can be fixed fast.
-        setError(`${e.message || "Network error"} - ${url.split("?")[0]}`);
+    // Warm the next day and the previous one, spaced out so AniList's rate limit isn't hit.
+    const prefetch = () => {
+      [1, -1].forEach((offset, i) => {
+        const n = days[selected + offset];
+        if (!n || readEntry(idOf(lang, n))) return;
+        timers.push(
+          window.setTimeout(() => {
+            loadDay(n, lang).catch(() => {});
+          }, 800 * (i + 1)),
+        );
       });
-    return () => ctrl.abort();
-  }, [days, selected, cache, retry]);
+    };
+
+    setError(null);
+    const hit = readEntry(idOf(lang, d));
+    if (hit && Date.now() - hit.t < FRESH_MS) {
+      prefetch();
+      return cleanup;
+    }
+
+    loadDay(d, lang)
+      .then(() => {
+        if (!alive) return;
+        setTick((n) => n + 1);
+        prefetch();
+      })
+      .catch((e) => {
+        if (!alive || hit) return; // an older copy is already on screen: keep it, stay quiet
+        console.error("Schedule request failed:", SCHEDULE_URL, e);
+        // Shows the real reason on screen (e.g. "HTTP 502" or "Failed to fetch") so it can be fixed fast.
+        setError(`${e.message || "Network error"} - ${SCHEDULE_URL}`);
+      });
+    return cleanup;
+  }, [days, selected, retry]);
 
   const pick = (i: number) => {
     setSelected(i);
@@ -129,14 +256,17 @@ export default function HomeSchedule() {
     if (s) s.scrollBy({ left: dir * (s.clientWidth + GAP), behavior: "smooth" });
   };
 
-  const key = days.length ? keyOf(days[selected]) : "";
-  const items = cache[key];
+  // days.length > 0 only after mount, so this never runs on the server.
+  const items = days.length ? readEntry(idOf(clientLang(), days[selected]))?.data : undefined;
   const sorted = items ? [...items].sort((a, b) => a.airingAt - b.airingAt) : [];
   const shown = showAll ? sorted : sorted.slice(0, VISIBLE);
   const isToday = selected === todayIdx;
 
   return (
     <section className="min-w-0 rounded-xl bg-neutral-900/50 p-3 sm:p-5">
+      {/* Open the connection to the API early so the first request doesn't wait on DNS/TLS. */}
+      {SCHEDULE_ORIGIN && <link rel="preconnect" href={SCHEDULE_ORIGIN} />}
+
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2 sm:mb-5 sm:gap-3">
         <h2 className="text-lg font-medium text-pink-300 sm:text-xl">Estimated Schedule</h2>
         <div className="flex items-center gap-2">
@@ -195,7 +325,7 @@ export default function HomeSchedule() {
       </div>
 
       {/* Rows */}
-      {error ? (
+      {error && !items ? (
         <ErrorScreen
           fullScreen={false}
           variant={isNetworkError(error) ? "network" : "server"}
@@ -203,7 +333,7 @@ export default function HomeSchedule() {
           onRetry={() => setRetry((n) => n + 1)}
         />
       ) : !items ? (
-        <p className="text-sm text-neutral-400">Loading schedule...</p>
+        <ScheduleSkeleton />
       ) : sorted.length === 0 ? (
         <p className="text-sm text-neutral-400">Nothing scheduled for this day.</p>
       ) : (

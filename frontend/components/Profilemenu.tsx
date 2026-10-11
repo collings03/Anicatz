@@ -2,12 +2,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AVATARS, avatarSrc } from "@/lib/avatar";
+import { API, authFetch, authHeaders, getAccess, getRefresh } from "@/lib/auth";
 
-// Uses NEXT_PUBLIC_API_URL when set. Otherwise: the deployed backend in production, localhost in dev.
-const API = (
-  process.env.NEXT_PUBLIC_API_URL ??
-  (process.env.NODE_ENV === "production" ? "https://anicatz-7v6u.vercel.app/api" : "http://localhost:8000/api")
-).replace(/\/+$/, "");
 const API_ORIGIN = (() => {
   try {
     return new URL(API).origin;
@@ -22,10 +18,8 @@ type Msg = { type: "ok" | "err"; text: string } | null;
 const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
 const PROFILE_CACHE_KEY = "anicatz_profile";
 
-export const authHeaders = (): Record<string, string> => {
-  const t = localStorage.getItem("anicatz_access");
-  return t ? { Authorization: `Bearer ${t}` } : {};
-};
+// Re-exported so existing imports from this file keep working. The real code lives in lib/auth.ts.
+export { authHeaders };
 
 /** Last known profile, kept in the browser so the picture shows instantly (and survives a slow or failed request). */
 export const cachedProfile = (): Profile | null => {
@@ -79,14 +73,13 @@ export const profileAvatarSrc = (p: Profile | null) => {
  * or the token was rejected. If the server is unreachable it returns the last known profile.
  */
 export async function fetchProfile(): Promise<Profile | null> {
-  const headers = authHeaders();
-  if (!headers.Authorization) {
-    cacheProfile(null); // logged out: drop the previous user's cached profile
-    return null;
-  }
+  if (!getAccess() && !getRefresh()) return null;
   try {
-    const r = await fetch(`${API}/auth/profile/`, { headers });
+    const r = await authFetch(`${API}/auth/profile/`);
     if (r.status === 401) {
+      // Renewing the login failed. If the tokens are gone we really are logged out;
+      // otherwise it is a server hiccup, so keep showing the last known profile.
+      if (getRefresh()) return cachedProfile();
       cacheProfile(null);
       return null;
     }
@@ -109,8 +102,7 @@ export function useProfile() {
 
   useEffect(() => {
     let alive = true;
-    // Only trust the cache while a token exists, so a logged-out visitor never sees an old picture.
-    setProfile(localStorage.getItem("anicatz_access") ? cachedProfile() : null);
+    setProfile(cachedProfile());
     const load = () => {
       fetchProfile().then((p) => {
         if (alive) setProfile(p);
@@ -146,14 +138,13 @@ export function useAutoAvatar(profile: Profile | null, onUpdate: (p: Profile) =>
     if (!profile || profile.avatar || AVATARS.length === 0) return;
     const key = profile.email || profile.username;
     if (autoAssigned.has(key)) return;
-    const headers = authHeaders();
-    if (!headers.Authorization) return; // not logged in
+    if (!getAccess() && !getRefresh()) return; // not logged in
     autoAssigned.add(key);
 
     const fd = new FormData();
     fd.set("avatar_preset", fallbackAvatarId(key));
 
-    fetch(`${API}/auth/profile/`, { method: "PATCH", headers, body: fd })
+    authFetch(`${API}/auth/profile/`, { method: "PATCH", body: fd })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data && typeof data === "object") {
@@ -293,7 +284,7 @@ export default function ProfileSettings({
       if (trimmed && trimmed !== profile?.username) fd.set("username", trimmed);
       if (file) fd.set("avatar", file);
       if (presetChanged) fd.set("avatar_preset", preset as string);
-      const r = await fetch(`${API}/auth/profile/`, { method: "PATCH", headers: authHeaders(), body: fd });
+      const r = await authFetch(`${API}/auth/profile/`, { method: "PATCH", body: fd });
       const text = await r.text();
       let data: Record<string, unknown> = {};
       try {
@@ -325,9 +316,9 @@ export default function ProfileSettings({
     setPwBusy(true);
     setPwMsg(null);
     try {
-      const r = await fetch(`${API}/auth/change-password/`, {
+      const r = await authFetch(`${API}/auth/change-password/`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders() },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ old_password: pw.old, new_password: pw.next }),
       });
       const data = await r.json().catch(() => ({}));

@@ -1,18 +1,30 @@
-"""Thin cached AniList GraphQL client. Retries on 429 (rate limit)."""
+"""Thin cached AniList GraphQL client. Fails fast and backs off when AniList rate-limits us."""
 import datetime as dt
 import hashlib
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import requests
 from django.conf import settings
 from django.core.cache import cache
 
 URL = "https://graphql.anilist.co"
+COOLDOWN_KEY = "anilist:cooldown"
+MAX_RETRY_WAIT = 2  # seconds: we only wait for a rate limit that clears almost at once
+MAX_SCHEDULE_PAGES = 8
+SCHEDULE_WORKERS = 3  # parallel page requests for one day of the schedule
+
+# One shared session reuses the connection, so repeated calls skip the TLS handshake.
+SESSION = requests.Session()
 
 
 class AniListError(Exception):
     pass
+
+
+class RateLimited(AniListError):
+    """AniList said slow down. We stop asking for a while so we don't make the block last longer."""
 
 
 MEDIA_FIELDS = """
@@ -21,6 +33,16 @@ MEDIA_FIELDS = """
   coverImage { large extraLarge color }
   bannerImage
   description(asHtml: false)
+  episodes status format season seasonYear averageScore genres
+  nextAiringEpisode { episode airingAt }
+"""
+
+# The schedule returns hundreds of rows and never shows banners or synopses, so they are left out.
+# That makes AniList's answer much smaller and faster.
+SCHEDULE_FIELDS = """
+  id idMal isAdult
+  title { romaji english }
+  coverImage { large extraLarge color }
   episodes status format season seasonYear averageScore genres
   nextAiringEpisode { episode airingAt }
 """
@@ -42,22 +64,36 @@ def run(gql, variables=None):
     if cached is not None:
         return cached
 
-    for _ in range(3):
+    # Still cooling down from a recent 429: answer immediately instead of hammering AniList.
+    if cache.get(COOLDOWN_KEY):
+        raise RateLimited("AniList rate limit exceeded")
+
+    for attempt in range(2):
         try:
-            r = requests.post(URL, json={"query": gql, "variables": variables or {}}, timeout=10)
+            r = SESSION.post(URL, json={"query": gql, "variables": variables or {}}, timeout=(3.05, 8))
         except requests.RequestException as exc:
             raise AniListError(str(exc)) from exc
+
         if r.status_code == 429:
             try:
-                wait = min(int(r.headers.get("Retry-After", "2")), 10)
+                wait = int(r.headers.get("Retry-After", "30"))
             except ValueError:
-                wait = 2
-            time.sleep(wait)
-            continue
+                wait = 30
+            if attempt == 0 and wait <= MAX_RETRY_WAIT:
+                time.sleep(wait)  # clears almost at once: one quick retry is fine
+                continue
+            # Never sleep for long inside a serverless function (it would time out): back off and fail fast.
+            cache.set(COOLDOWN_KEY, True, min(max(wait, 5), 60))
+            raise RateLimited("AniList rate limit exceeded")
+
         if r.status_code == 404:
             return None
 
-        body = r.json() if r.content else {}
+        try:
+            body = r.json() if r.content else {}
+        except ValueError:
+            # AniList sent something that isn't JSON (e.g. an HTML error page).
+            raise AniListError(f"AniList returned {r.status_code}")
         if body.get("errors"):
             msg = "; ".join(e.get("message", "unknown error") for e in body["errors"])
             raise AniListError(f"AniList error: {msg}")
@@ -68,7 +104,7 @@ def run(gql, variables=None):
         if data:
             cache.set(key, data, settings.CACHE_TTL_SECONDS)
         return data
-    raise AniListError("AniList rate limit exceeded")
+    raise RateLimited("AniList rate limit exceeded")
 
 
 def _list(sort, page, per_page, search=None, status=None, fmt=None, genre=None):
@@ -156,20 +192,42 @@ def schedule(start=None, end=None, days=7):
     gql = f"""
     query ($start: Int, $end: Int, $page: Int) {{
       Page(page: $page, perPage: 50) {{
-        pageInfo {{ hasNextPage }}
+        pageInfo {{ hasNextPage lastPage }}
         airingSchedules(airingAt_greater: $start, airingAt_lesser: $end, sort: TIME) {{
           airingAt episode
-          media {{ {MEDIA_FIELDS} }}
+          media {{ {SCHEDULE_FIELDS} }}
         }}
       }}
     }}"""
-    items = []
-    for page in range(1, 9):
+
+    def fetch(page):
         data = run(gql, {"start": start, "end": end, "page": page})
-        if not data:
-            break
-        pg = data["Page"]
+        return data["Page"] if data else None
+
+    first = fetch(1)
+    if not first:
+        return []
+    pages = [first]
+
+    info = first["pageInfo"]
+    last = info.get("lastPage")
+    if last and last > 1:
+        # AniList told us how many pages there are: fetch the rest at the same time instead of one by one.
+        rest = range(2, min(last, MAX_SCHEDULE_PAGES) + 1)
+        with ThreadPoolExecutor(max_workers=min(SCHEDULE_WORKERS, len(rest))) as pool:
+            pages += [p for p in pool.map(fetch, rest) if p]
+    elif info.get("hasNextPage"):
+        # No page count given: walk the pages in order.
+        for page in range(2, MAX_SCHEDULE_PAGES + 1):
+            pg = fetch(page)
+            if not pg:
+                break
+            pages.append(pg)
+            if not pg["pageInfo"]["hasNextPage"]:
+                break
+
+    items = []
+    for pg in pages:
         items += [s for s in pg["airingSchedules"] if s["media"] and not s["media"].get("isAdult")]
-        if not pg["pageInfo"]["hasNextPage"]:
-            break
+    items.sort(key=lambda s: s["airingAt"])
     return items

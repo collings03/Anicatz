@@ -3,6 +3,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import dj_database_url
+from django.core.exceptions import ImproperlyConfigured
 
 # python-dotenv is optional: locally it loads .env, on Vercel the env vars come from the dashboard.
 # Wrapped so a missing package can never crash the serverless function on import.
@@ -23,8 +24,15 @@ def env_list(name: str, default: str = "") -> list[str]:
     return [v.strip().rstrip("/") for v in os.environ.get(name, default).split(",") if v.strip()]
 
 
-SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-insecure-change-me")
-DEBUG = os.environ.get("DJANGO_DEBUG", "1") == "1"
+_INSECURE_KEY = "dev-insecure-change-me"
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", _INSECURE_KEY)
+# Debug is ON by default on your PC and OFF by default on Vercel, so a forgotten variable can't expose it.
+DEBUG = os.environ.get("DJANGO_DEBUG", "0" if ON_VERCEL else "1") == "1"
+
+# The secret key signs every login token. With the public default anyone could forge a token,
+# so production refuses to start without a real one. NEVER change it after launch: that logs everyone out.
+if not DEBUG and SECRET_KEY == _INSECURE_KEY:
+    raise ImproperlyConfigured("Set DJANGO_SECRET_KEY in the environment (Vercel -> Settings -> Environment Variables).")
 
 # Hostnames only: NO ports and NO https://. These are the hosts THIS Django server answers to.
 # ".vercel.app" (leading dot) also allows Vercel's per-deployment preview URLs.
@@ -94,6 +102,7 @@ DATABASES = {
     "default": dj_database_url.parse(
         os.environ.get("DATABASE_URL") or f"sqlite:///{_default_sqlite}",
         conn_max_age=600,
+        conn_health_checks=True,
     )
 }
 
@@ -113,7 +122,16 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": ["rest_framework_simplejwt.authentication.JWTAuthentication"],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.AllowAny"],
 }
-SIMPLE_JWT = {"ACCESS_TOKEN_LIFETIME": timedelta(hours=1), "REFRESH_TOKEN_LIFETIME": timedelta(days=14)}
+
+# Login tokens. The frontend (lib/auth.ts) renews the short access token automatically.
+# ROTATE_REFRESH_TOKENS hands back a NEW refresh token on every renewal, so anyone who visits at least
+# once every 60 days stays logged in for good.
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=60),
+    "ROTATE_REFRESH_TOKENS": True,
+    "UPDATE_LAST_LOGIN": True,
+}
 
 # Websites (frontends) that are allowed to call this API from the browser.
 # Needs scheme + host + port, no trailing slash. localhost and 127.0.0.1 are different origins,
@@ -125,7 +143,6 @@ CORS_ALLOWED_ORIGINS = sorted(
             "http://localhost:3000",
             "http://127.0.0.1:3000",
             "https://anicatz.vercel.app",
-            "https://www.anicatz.com",
             "https://anicatz-7v6u.vercel.app",
             "https://anicatz.com",
             "https://www.anicatz.com",
@@ -136,6 +153,10 @@ CORS_ALLOWED_ORIGINS = sorted(
 
 # Needed for admin / session-cookie POSTs coming from these HTTPS sites.
 CSRF_TRUSTED_ORIGINS = [o for o in CORS_ALLOWED_ORIGINS if o.startswith("https://")]
+
+# Hosts the episode checker may contact (your video provider domains, comma-separated, no https://).
+# Empty = any public host. Set it in production, e.g. EPISODE_CHECK_HOSTS=provider-one.com,provider-two.net
+EPISODE_CHECK_HOSTS = [h.lower() for h in env_list("EPISODE_CHECK_HOSTS")]
 
 LANGUAGE_CODE = "en-us"
 TIME_ZONE = "UTC"
