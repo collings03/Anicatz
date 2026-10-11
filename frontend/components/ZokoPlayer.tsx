@@ -32,7 +32,11 @@ const NOTICE_KEY = "anicatz-server2-notice-dismissed";
 // Blocks popups and top-level redirects from the embedded players.
 // Deliberately omits allow-popups and allow-top-navigation.
 const SANDBOX =
-  "allow-scripts allow-same-origin allow-forms allow-presentation allow-orientation-lock";
+  "allow-scripts allow-same-origin allow-forms allow-presentation allow-orientation-lock allow-pointer-lock allow-modals";
+
+// The sandbox can break the embedded player's own controls on some phones.
+// Keep this false until you confirm the controls work with it on.
+const USE_SANDBOX = false;
 
 type Props = {
   malId: number;
@@ -872,7 +876,7 @@ export default function ZokoPlayer({
               key={`${src}|${reload}`}
               ref={ref}
               src={src}
-              sandbox={SANDBOX}
+              sandbox={USE_SANDBOX ? SANDBOX : undefined}
               title={`Episode ${episode}`}
               allow="fullscreen; autoplay; picture-in-picture; encrypted-media"
               allowFullScreen
