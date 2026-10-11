@@ -143,6 +143,7 @@ export default function ZokoPlayer({
   const [expanded, setExpanded] = useState(false);
   const [isFs, setIsFs] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
 
   const [ambient, setAmbient] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -178,6 +179,18 @@ export default function ZokoPlayer({
     return () => {
       window.removeEventListener("resize", check);
     };
+  }, []);
+
+  // --------------------------------------------------
+  // Detect iPhone / iPad (iPadOS often reports itself as a Mac)
+  // --------------------------------------------------
+
+  useEffect(() => {
+    const ios =
+      /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+    setIsIOS(ios);
   }, []);
 
   // --------------------------------------------------
@@ -534,7 +547,9 @@ export default function ZokoPlayer({
 
   const src = server === "cosmic" ? cosmicUrl : zokoSrc;
 
-  const sandbox = !SANDBOX_ON[server]
+  // iOS Safari handles sandboxed player iframes badly (taps inside the video
+  // don't register), so the sandbox is skipped there.
+  const sandbox = isIOS || !SANDBOX_ON[server]
     ? undefined
     : isMobile
       ? SANDBOX_MOBILE
@@ -805,7 +820,7 @@ export default function ZokoPlayer({
           } as CSSProperties
         }
       >
-        {ambient && !inFullscreen && (
+        {ambient && !inFullscreen && !isIOS && (
           <div
             aria-hidden
             className={`pointer-events-none absolute -inset-2 -z-10 sm:-inset-5 ${
@@ -839,10 +854,12 @@ export default function ZokoPlayer({
           className={
             expanded
               ? "fixed inset-0 z-[10001] h-[100dvh] w-screen overflow-hidden bg-black"
-              : "relative aspect-video overflow-hidden rounded-xl bg-black transition-shadow duration-300"
+              : isIOS
+                ? "relative aspect-video bg-black"
+                : "relative aspect-video overflow-hidden rounded-xl bg-black transition-shadow duration-300"
           }
           style={
-            ambient && !expanded
+            ambient && !expanded && !isIOS
               ? {
                   boxShadow:
                     "0 0 0 2px var(--amb-avg), 0 0 28px -6px var(--amb-avg)",
@@ -894,6 +911,7 @@ export default function ZokoPlayer({
               title={`Episode ${episode}`}
               allow="fullscreen; autoplay; picture-in-picture; encrypted-media"
               allowFullScreen
+              {...({ webkitallowfullscreen: "true" } as Record<string, string>)}
               onLoad={() => {
                 setLoaded(true);
                 setSlow(false);
@@ -901,7 +919,9 @@ export default function ZokoPlayer({
               onError={() => {
                 setFailed(true);
               }}
-              className="absolute inset-0 h-full w-full border-0"
+              className={`absolute inset-0 h-full w-full border-0 ${
+                isIOS ? "rounded-xl" : ""
+              }`}
             />
           )}
 
