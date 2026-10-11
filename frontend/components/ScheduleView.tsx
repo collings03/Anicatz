@@ -4,10 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { clientLang } from "@/lib/lang";
 import { animeSlug, displayTitle, type ScheduleItem } from "@/lib/types";
 import ErrorScreen, { isNetworkError } from "@/components/ErrorScreen";
+import { API } from "@/lib/auth";
 
-// The schedule endpoint on your deployed backend (same link that returns the JSON list):
-// https://anicatz-7v6u.vercel.app/api/anime/schedule/?start=...&end=...
-const SCHEDULE_URL = "https://anicatz-7v6u.vercel.app/api/anime/schedule/";
+// The schedule endpoint on your backend. The address comes from NEXT_PUBLIC_API_URL (see lib/auth.ts),
+// so moving the backend only means changing that one setting.
+const SCHEDULE_URL = `${API}/anime/schedule/`;
 const SCHEDULE_ORIGIN = (() => {
   try {
     return new URL(SCHEDULE_URL).origin;

@@ -17,6 +17,7 @@ if load_dotenv:
     load_dotenv(BASE_DIR.parent / ".env")
 
 ON_VERCEL = bool(os.environ.get("VERCEL"))
+ON_RENDER = bool(os.environ.get("RENDER"))  # Render sets RENDER=true on its servers
 
 
 def env_list(name: str, default: str = "") -> list[str]:
@@ -26,13 +27,13 @@ def env_list(name: str, default: str = "") -> list[str]:
 
 _INSECURE_KEY = "dev-insecure-change-me"
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", _INSECURE_KEY)
-# Debug is ON by default on your PC and OFF by default on Vercel, so a forgotten variable can't expose it.
-DEBUG = os.environ.get("DJANGO_DEBUG", "0" if ON_VERCEL else "1") == "1"
+# Debug is ON by default on your PC and OFF by default on Vercel/Render, so a forgotten variable can't expose it.
+DEBUG = os.environ.get("DJANGO_DEBUG", "0" if (ON_VERCEL or ON_RENDER) else "1") == "1"
 
 # The secret key signs every login token. With the public default anyone could forge a token,
 # so production refuses to start without a real one. NEVER change it after launch: that logs everyone out.
 if not DEBUG and SECRET_KEY == _INSECURE_KEY:
-    raise ImproperlyConfigured("Set DJANGO_SECRET_KEY in the environment (Vercel -> Settings -> Environment Variables).")
+    raise ImproperlyConfigured("Set DJANGO_SECRET_KEY in the environment (Render -> Environment, or Vercel -> Settings -> Environment Variables).")
 
 # Hostnames only: NO ports and NO https://. These are the hosts THIS Django server answers to.
 # ".vercel.app" (leading dot) also allows Vercel's per-deployment preview URLs.
@@ -46,8 +47,11 @@ ALLOWED_HOSTS = sorted(
             ".vercel.app",
             "anicatz.com",
             "www.anicatz.com",
+            "anicatz.onrender.com",
         ]
         + env_list("DJANGO_ALLOWED_HOSTS")
+        # Render tells the app its own address (my-service.onrender.com), so it never needs adding by hand.
+        + ([os.environ["RENDER_EXTERNAL_HOSTNAME"]] if os.environ.get("RENDER_EXTERNAL_HOSTNAME") else [])
     )
 )
 
@@ -69,6 +73,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",  # serves the admin's CSS/JS on gunicorn
     "anime.middleware.TitleLanguageMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -80,7 +85,7 @@ MIDDLEWARE = [
 ROOT_URLCONF = "config.urls"
 WSGI_APPLICATION = "config.wsgi.application"
 
-# Vercel terminates HTTPS at its proxy; this makes Django see requests as secure.
+# Vercel and Render terminate HTTPS at their proxy; this makes Django see requests as secure.
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 TEMPLATES = [{
@@ -146,7 +151,7 @@ CORS_ALLOWED_ORIGINS = sorted(
             "https://anicatz-7v6u.vercel.app",
             "https://anicatz.com",
             "https://www.anicatz.com",
-             "https://anicatz.onrender.com",
+            "https://anicatz.onrender.com",
         ]
         + env_list("CORS_ALLOWED_ORIGINS")
     )
