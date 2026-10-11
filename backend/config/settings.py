@@ -146,6 +146,7 @@ CORS_ALLOWED_ORIGINS = sorted(
             "https://anicatz-7v6u.vercel.app",
             "https://anicatz.com",
             "https://www.anicatz.com",
+             "https://anicatz.onrender.com",
         ]
         + env_list("CORS_ALLOWED_ORIGINS")
     )
