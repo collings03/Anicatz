@@ -68,7 +68,12 @@ export default async function WatchPage({
   }
 
   return (
-    <main className="grid w-full gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[240px_minmax(0,1fr)_280px]">
+    /*
+     * Phones: pt-20 clears the fixed header so the logo no longer sits on top of
+     * the back link. If the gap looks too big, lower pt-20 (for example pt-16).
+     * mx-auto + max-w keeps the layout centered and stops it stretching on huge screens.
+     */
+    <main className="relative mx-auto grid w-full max-w-[1800px] gap-5 px-3 pb-10 pt-16 sm:gap-6 sm:px-6 sm:pt-24 lg:grid-cols-[240px_minmax(0,1fr)_280px] lg:pt-6">
       {/* History */}
 
       <HistoryTracker
@@ -81,7 +86,7 @@ export default async function WatchPage({
       {/* Episode list: numbers up to 100, a range dropdown (1-100, 101-200, ...) beyond that */}
 
       <aside className="order-2 min-w-0 lg:order-1">
-        <h2 className="mb-3 text-lg font-semibold">
+        <h2 className="mb-3 text-base font-semibold sm:text-lg">
           Episodes
         </h2>
 
@@ -99,11 +104,16 @@ export default async function WatchPage({
       {/* Player + comments */}
 
       <section className="order-1 min-w-0 space-y-4 lg:order-2">
+        {/* Phones: compact "Back" pill pinned top right, level with the logo.
+            sm and up: normal link with the anime title. */}
         <Link
           href={`/anime/${path}`}
-          className="text-sm text-neutral-400 hover:text-white"
+          aria-label={`Back to ${displayTitle(anime)}`}
+          className="absolute right-3 top-2 z-10 flex items-center gap-1.5 rounded-full bg-white/10 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/15 backdrop-blur transition hover:bg-white/20 sm:static sm:block sm:min-w-0 sm:truncate sm:rounded-none sm:bg-transparent sm:p-0 sm:py-1 sm:font-normal sm:text-neutral-400 sm:ring-0 sm:backdrop-blur-none sm:hover:bg-transparent sm:hover:text-white"
         >
-          &larr; {displayTitle(anime)}
+          <span aria-hidden>&larr;</span>
+          <span className="sm:hidden">Back</span>
+          <span className="hidden sm:inline">{displayTitle(anime)}</span>
         </Link>
 
         <WatchClient
@@ -122,7 +132,7 @@ export default async function WatchPage({
           </span>
         </p>
 
-        <div className="pt-4">
+        <div className="pt-2 sm:pt-4">
           <Comments
             animeId={Number(id)}
             episode={episode}
@@ -130,44 +140,46 @@ export default async function WatchPage({
         </div>
       </section>
 
-      {/* Anime info */}
+      {/* Anime info: stacked on phones, poster beside the text on tablets, sidebar on desktop */}
 
-      <aside className="order-3 min-w-0 space-y-3">
-        <div className="relative mx-auto aspect-[2/3] w-40 overflow-hidden rounded-lg lg:w-full">
+      <aside className="order-3 min-w-0 space-y-3 md:flex md:items-start md:gap-5 md:space-y-0 lg:block lg:space-y-3">
+        <div className="relative mx-auto aspect-[2/3] w-28 shrink-0 overflow-hidden rounded-lg sm:w-36 md:mx-0 md:w-40 lg:mx-auto lg:w-full">
           <Image
             src={anime.coverImage.large}
             alt=""
             fill
-            sizes="280px"
+            sizes="(max-width: 1024px) 160px, 280px"
             className="object-cover"
           />
         </div>
 
-        <h2 className="text-lg font-semibold">
-          {displayTitle(anime)}
-        </h2>
+        <div className="min-w-0 space-y-3 max-md:text-center">
+          <h2 className="text-lg font-semibold">
+            {displayTitle(anime)}
+          </h2>
 
-        <p className="text-xs text-neutral-400">
-          {[
-            anime.format,
-            anime.seasonYear,
-            anime.averageScore != null &&
-              `${anime.averageScore}%`,
-          ]
-            .filter(Boolean)
-            .join(" • ")}
-        </p>
+          <p className="text-xs text-neutral-400">
+            {[
+              anime.format,
+              anime.seasonYear,
+              anime.averageScore != null &&
+                `${anime.averageScore}%`,
+            ]
+              .filter(Boolean)
+              .join(" • ")}
+          </p>
 
-        <p className="line-clamp-6 text-sm text-neutral-300">
-          {stripHtml(anime.description)}
-        </p>
+          <p className="line-clamp-5 text-left text-sm text-neutral-300 lg:line-clamp-6">
+            {stripHtml(anime.description)}
+          </p>
+        </div>
       </aside>
 
       {/* Recommendations */}
 
       {recs.length > 0 && (
-        <section className="order-4 pt-4 lg:col-span-3">
-          <h2 className="mb-4 text-xl font-semibold">
+        <section className="order-4 pt-2 sm:pt-4 lg:col-span-3">
+          <h2 className="mb-4 text-lg font-semibold sm:text-xl">
             Recommended for you
           </h2>
 

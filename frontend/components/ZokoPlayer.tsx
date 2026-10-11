@@ -25,6 +25,15 @@ type Server = "zoko" | "cosmic";
 const AMBIENT_KEY = "anicatz-ambient";
 const SLOW_MS = 12000;
 
+// Set to false when Server 2 works again and the notice disappears for everyone.
+const SERVER2_DOWN = true;
+const NOTICE_KEY = "anicatz-server2-notice-dismissed";
+
+// Blocks popups and top-level redirects from the embedded players.
+// Deliberately omits allow-popups and allow-top-navigation.
+const SANDBOX =
+  "allow-scripts allow-same-origin allow-forms allow-presentation allow-orientation-lock";
+
 type Props = {
   malId: number;
   aniId: number;
@@ -111,6 +120,7 @@ export default function ZokoPlayer({
 
   const [track, setTrack] = useState<Track>("sub");
 
+  // Server 1 (Zoko) is the default on every device.
   const [server, setServer] = useState<Server>("zoko");
 
   const [failed, setFailed] = useState(false);
@@ -126,6 +136,9 @@ export default function ZokoPlayer({
   const [syncing, setSyncing] = useState(false);
   const [canSync, setCanSync] = useState(false);
 
+  // Hidden until we have checked storage, so it never flashes for people who dismissed it.
+  const [noticeHidden, setNoticeHidden] = useState(true);
+
   // Cosmic state
   const [cosmicUrl, setCosmicUrl] = useState<string | null>(null);
   const [cosmicLoading, setCosmicLoading] = useState(false);
@@ -134,7 +147,7 @@ export default function ZokoPlayer({
   const hex = hexOf(color);
 
   // --------------------------------------------------
-  // Detect mobile
+  // Detect mobile (used for fullscreen orientation lock only)
   // --------------------------------------------------
 
   useEffect(() => {
@@ -156,14 +169,6 @@ export default function ZokoPlayer({
   }, []);
 
   // --------------------------------------------------
-  // Default server
-  // --------------------------------------------------
-
-  useEffect(() => {
-    setServer(isMobile ? "cosmic" : "zoko");
-  }, [isMobile]);
-
-  // --------------------------------------------------
   // Ambient setting
   // --------------------------------------------------
 
@@ -177,9 +182,7 @@ export default function ZokoPlayer({
       }
     } catch {}
 
-    if (
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches
-    ) {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       setAmbient(false);
     }
   }, []);
@@ -192,11 +195,29 @@ export default function ZokoPlayer({
     setCanSync(
       !!navigator.mediaDevices?.getDisplayMedia &&
         /Chrome|Edg\//.test(navigator.userAgent) &&
-        !/Android|iPhone|iPad|iPod|Mobile/i.test(
-          navigator.userAgent
-        )
+        !/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
     );
   }, []);
+
+  // --------------------------------------------------
+  // Server 2 notice (dismissible)
+  // --------------------------------------------------
+
+  useEffect(() => {
+    try {
+      setNoticeHidden(localStorage.getItem(NOTICE_KEY) === "1");
+    } catch {
+      setNoticeHidden(false);
+    }
+  }, []);
+
+  const dismissNotice = () => {
+    setNoticeHidden(true);
+
+    try {
+      localStorage.setItem(NOTICE_KEY, "1");
+    } catch {}
+  };
 
   // --------------------------------------------------
   // Reset ambient colors
@@ -253,10 +274,7 @@ export default function ZokoPlayer({
 
       streamRef.current = stream;
 
-      stream.getVideoTracks()[0]?.addEventListener(
-        "ended",
-        stopSync
-      );
+      stream.getVideoTracks()[0]?.addEventListener("ended", stopSync);
 
       const v = document.createElement("video");
 
@@ -300,10 +318,7 @@ export default function ZokoPlayer({
           return;
         }
 
-        if (
-          document.fullscreenElement ||
-          el.classList.contains("fixed")
-        ) {
+        if (document.fullscreenElement || el.classList.contains("fixed")) {
           return;
         }
 
@@ -313,40 +328,16 @@ export default function ZokoPlayer({
         const sx = Math.max(0, r.left * k);
         const sy = Math.max(0, r.top * k);
 
-        const sw = Math.min(
-          r.width * k,
-          v.videoWidth - sx
-        );
-
-        const sh = Math.min(
-          r.height * k,
-          v.videoHeight - sy
-        );
+        const sw = Math.min(r.width * k, v.videoWidth - sx);
+        const sh = Math.min(r.height * k, v.videoHeight - sy);
 
         if (sw < 16 || sh < 16) return;
 
-        ctx.drawImage(
-          v,
-          sx,
-          sy,
-          sw,
-          sh,
-          0,
-          0,
-          W,
-          H
-        );
+        ctx.drawImage(v, sx, sy, sw, sh, 0, 0, W, H);
 
-        const px = ctx.getImageData(
-          0,
-          0,
-          W,
-          H
-        ).data;
+        const px = ctx.getImageData(0, 0, W, H).data;
 
-        const edge = (
-          test: (x: number, y: number) => boolean
-        ): RGB => {
+        const edge = (test: (x: number, y: number) => boolean): RGB => {
           let r0 = 0;
           let g0 = 0;
           let b0 = 0;
@@ -366,9 +357,7 @@ export default function ZokoPlayer({
             }
           }
 
-          return n
-            ? [r0 / n, g0 / n, b0 / n]
-            : [0, 0, 0];
+          return n ? [r0 / n, g0 / n, b0 / n] : [0, 0, 0];
         };
 
         const target: Record<string, RGB> = {
@@ -394,24 +383,14 @@ export default function ZokoPlayer({
 
           const out = vivid(c);
 
-          root.style.setProperty(
-            `--amb-${name}`,
-            css(out)
-          );
+          root.style.setProperty(`--amb-${name}`, css(out));
 
           ar += out[0];
           ag += out[1];
           ab += out[2];
         }
 
-        root.style.setProperty(
-          "--amb-avg",
-          css([
-            ar / 4,
-            ag / 4,
-            ab / 4,
-          ])
-        );
+        root.style.setProperty("--amb-avg", css([ar / 4, ag / 4, ab / 4]));
 
         first = false;
       }, 120);
@@ -429,10 +408,7 @@ export default function ZokoPlayer({
   const toggleAmbient = () => {
     setAmbient((value) => {
       try {
-        localStorage.setItem(
-          AMBIENT_KEY,
-          value ? "off" : "on"
-        );
+        localStorage.setItem(AMBIENT_KEY, value ? "off" : "on");
       } catch {}
 
       if (value) {
@@ -449,12 +425,7 @@ export default function ZokoPlayer({
 
   const zokoSrc = useMemo(() => {
     return `${ZOKO_BASE}/stream/mal/${malId}/${episode}/${track}?color=${hex}`;
-  }, [
-    malId,
-    episode,
-    track,
-    hex,
-  ]);
+  }, [malId, episode, track, hex]);
 
   // --------------------------------------------------
   // COSMIC API
@@ -462,7 +433,6 @@ export default function ZokoPlayer({
   // /api/embeds/{aniId}/{episode}
   //
   // Response:
-  //
   // {
   //   "success": true,
   //   "results": {
@@ -500,9 +470,7 @@ export default function ZokoPlayer({
         );
 
         if (!response.ok) {
-          throw new Error(
-            `Cosmic API returned ${response.status}`
-          );
+          throw new Error(`Cosmic API returned ${response.status}`);
         }
 
         const data = await response.json();
@@ -511,13 +479,8 @@ export default function ZokoPlayer({
 
         const embedUrl = data?.results?.embedUrl;
 
-        if (
-          !data?.success ||
-          !embedUrl
-        ) {
-          throw new Error(
-            "No Cosmic episode source available"
-          );
+        if (!data?.success || !embedUrl) {
+          throw new Error("No Cosmic episode source available");
         }
 
         const absoluteUrl = embedUrl.startsWith("http")
@@ -551,21 +514,13 @@ export default function ZokoPlayer({
     return () => {
       cancelled = true;
     };
-  }, [
-    server,
-    aniId,
-    episode,
-    reload,
-  ]);
+  }, [server, aniId, episode, reload]);
 
   // --------------------------------------------------
   // Final iframe source
   // --------------------------------------------------
 
-  const src =
-    server === "cosmic"
-      ? cosmicUrl
-      : zokoSrc;
+  const src = server === "cosmic" ? cosmicUrl : zokoSrc;
 
   // --------------------------------------------------
   // Change server
@@ -629,12 +584,7 @@ export default function ZokoPlayer({
     return () => {
       window.clearTimeout(t);
     };
-  }, [
-    src,
-    reload,
-    server,
-    cosmicLoading,
-  ]);
+  }, [src, reload, server, cosmicLoading]);
 
   // --------------------------------------------------
   // Provider messages
@@ -644,20 +594,13 @@ export default function ZokoPlayer({
     let origin: string;
 
     try {
-      origin = new URL(
-        server === "cosmic"
-          ? COSMIC_BASE
-          : ZOKO_BASE
-      ).origin;
+      origin = new URL(server === "cosmic" ? COSMIC_BASE : ZOKO_BASE).origin;
     } catch {
       return;
     }
 
     function onMessage(e: MessageEvent) {
-      if (
-        e.origin !== origin ||
-        e.source !== ref.current?.contentWindow
-      ) {
+      if (e.origin !== origin || e.source !== ref.current?.contentWindow) {
         return;
       }
 
@@ -671,14 +614,9 @@ export default function ZokoPlayer({
         }
       }
 
-      const type =
-        data?.type ??
-        data?.event;
+      const type = data?.type ?? data?.event;
 
-      if (
-        type === "complete" &&
-        episode < totalEpisodes
-      ) {
+      if (type === "complete" && episode < totalEpisodes) {
         onEpisodeChange(episode + 1);
       }
 
@@ -687,23 +625,12 @@ export default function ZokoPlayer({
       }
     }
 
-    window.addEventListener(
-      "message",
-      onMessage
-    );
+    window.addEventListener("message", onMessage);
 
     return () => {
-      window.removeEventListener(
-        "message",
-        onMessage
-      );
+      window.removeEventListener("message", onMessage);
     };
-  }, [
-    episode,
-    totalEpisodes,
-    onEpisodeChange,
-    server,
-  ]);
+  }, [episode, totalEpisodes, onEpisodeChange, server]);
 
   // --------------------------------------------------
   // Fullscreen state
@@ -711,21 +638,13 @@ export default function ZokoPlayer({
 
   useEffect(() => {
     const onChange = () => {
-      setIsFs(
-        document.fullscreenElement === box.current
-      );
+      setIsFs(document.fullscreenElement === box.current);
     };
 
-    document.addEventListener(
-      "fullscreenchange",
-      onChange
-    );
+    document.addEventListener("fullscreenchange", onChange);
 
     return () => {
-      document.removeEventListener(
-        "fullscreenchange",
-        onChange
-      );
+      document.removeEventListener("fullscreenchange", onChange);
     };
   }, []);
 
@@ -736,8 +655,7 @@ export default function ZokoPlayer({
   useEffect(() => {
     if (!expanded) return;
 
-    const previous =
-      document.body.style.overflow;
+    const previous = document.body.style.overflow;
 
     document.body.style.overflow = "hidden";
 
@@ -747,18 +665,12 @@ export default function ZokoPlayer({
       }
     };
 
-    window.addEventListener(
-      "keydown",
-      onKey
-    );
+    window.addEventListener("keydown", onKey);
 
     return () => {
       document.body.style.overflow = previous;
 
-      window.removeEventListener(
-        "keydown",
-        onKey
-      );
+      window.removeEventListener("keydown", onKey);
     };
   }, [expanded]);
 
@@ -766,53 +678,48 @@ export default function ZokoPlayer({
   // Fullscreen
   // --------------------------------------------------
 
-  const toggleFullscreen = useCallback(
-    async () => {
-      if (expanded) {
-        setExpanded(false);
+  const toggleFullscreen = useCallback(async () => {
+    if (expanded) {
+      setExpanded(false);
+      return;
+    }
+
+    if (document.fullscreenElement) {
+      await document.exitFullscreen();
+      return;
+    }
+
+    const el = box.current as
+      | (HTMLDivElement & {
+          webkitRequestFullscreen?: () => void;
+        })
+      | null;
+
+    try {
+      if (el?.requestFullscreen) {
+        await el.requestFullscreen();
+
+        if (isMobile) {
+          try {
+            await (
+              screen.orientation as ScreenOrientation & {
+                lock?: (orientation: string) => Promise<void>;
+              }
+            ).lock?.("landscape");
+          } catch {}
+        }
+
         return;
       }
 
-      if (document.fullscreenElement) {
-        await document.exitFullscreen();
+      if (el?.webkitRequestFullscreen) {
+        el.webkitRequestFullscreen();
         return;
       }
+    } catch {}
 
-      const el = box.current as
-        | (HTMLDivElement & {
-            webkitRequestFullscreen?: () => void;
-          })
-        | null;
-
-      try {
-        if (el?.requestFullscreen) {
-          await el.requestFullscreen();
-
-          if (isMobile) {
-            try {
-              await (
-                screen.orientation as ScreenOrientation & {
-                  lock?: (
-                    orientation: string
-                  ) => Promise<void>;
-                }
-              ).lock?.("landscape");
-            } catch {}
-          }
-
-          return;
-        }
-
-        if (el?.webkitRequestFullscreen) {
-          el.webkitRequestFullscreen();
-          return;
-        }
-      } catch {}
-
-      setExpanded(true);
-    },
-    [expanded, isMobile]
-  );
+    setExpanded(true);
+  }, [expanded, isMobile]);
 
   // --------------------------------------------------
   // Retry
@@ -828,11 +735,9 @@ export default function ZokoPlayer({
     setReload((n) => n + 1);
   };
 
-  const inFullscreen =
-    expanded || isFs;
+  const inFullscreen = expanded || isFs;
 
-  const showProblem =
-    failed || (!loaded && slow);
+  const showProblem = failed || (!loaded && slow);
 
   const btn =
     "flex min-h-[48px] items-center justify-center gap-1.5 rounded-xl border border-neutral-600 bg-white/5 px-3 font-semibold transition active:scale-[0.98] disabled:opacity-40";
@@ -886,41 +791,27 @@ export default function ZokoPlayer({
           <div
             aria-hidden
             className={`pointer-events-none absolute -inset-2 -z-10 sm:-inset-5 ${
-              syncing
-                ? "opacity-80"
-                : "ambient-pulse"
+              syncing ? "opacity-80" : "ambient-pulse"
             }`}
           >
             <div
               className="absolute inset-x-6 -top-1 h-1/2 rounded-full blur-2xl sm:blur-3xl"
-              style={{
-                background:
-                  "var(--amb-top)",
-              }}
+              style={{ background: "var(--amb-top)" }}
             />
 
             <div
               className="absolute inset-x-6 -bottom-1 h-1/2 rounded-full blur-2xl sm:blur-3xl"
-              style={{
-                background:
-                  "var(--amb-bottom)",
-              }}
+              style={{ background: "var(--amb-bottom)" }}
             />
 
             <div
               className="absolute inset-y-6 -left-1 w-1/3 rounded-full blur-2xl sm:blur-3xl"
-              style={{
-                background:
-                  "var(--amb-left)",
-              }}
+              style={{ background: "var(--amb-left)" }}
             />
 
             <div
               className="absolute inset-y-6 -right-1 w-1/3 rounded-full blur-2xl sm:blur-3xl"
-              style={{
-                background:
-                  "var(--amb-right)",
-              }}
+              style={{ background: "var(--amb-right)" }}
             />
           </div>
         )}
@@ -943,44 +834,36 @@ export default function ZokoPlayer({
         >
           {/* Cosmic API loading */}
 
-          {server === "cosmic" &&
-            cosmicLoading && (
-              <div className="absolute inset-0 z-30 grid place-items-center bg-black text-center text-white">
-                <div>
-                  <span className="mx-auto mb-3 block h-9 w-9 animate-spin rounded-full border-[3px] border-white/20 border-t-white" />
+          {server === "cosmic" && cosmicLoading && (
+            <div className="absolute inset-0 z-30 grid place-items-center bg-black text-center text-white">
+              <div>
+                <span className="mx-auto mb-3 block h-9 w-9 animate-spin rounded-full border-[3px] border-white/20 border-t-white" />
 
-                  <p className="text-sm font-medium">
-                    Loading Cosmic...
-                  </p>
-                </div>
+                <p className="text-sm font-medium">Loading Cosmic...</p>
               </div>
-            )}
+            </div>
+          )}
 
           {/* Cosmic API error */}
 
-          {server === "cosmic" &&
-            cosmicError && (
-              <div className="absolute inset-0 z-30 grid place-items-center bg-black/90 p-4 text-center text-white">
-                <div className="max-w-sm space-y-3">
-                  <p className="text-sm font-semibold">
-                    Stream unavailable
-                  </p>
+          {server === "cosmic" && cosmicError && (
+            <div className="absolute inset-0 z-30 grid place-items-center bg-black/90 p-4 text-center text-white">
+              <div className="max-w-sm space-y-3">
+                <p className="text-sm font-semibold">Stream unavailable</p>
 
-                  <p className="text-xs text-white/60">
-                    {cosmicError}
-                  </p>
+                <p className="text-xs text-white/60">{cosmicError}</p>
 
-                  <button
-                    type="button"
-                    onClick={retry}
-                    className="mx-auto flex min-h-[48px] items-center gap-2 rounded-full bg-teal-400 px-6 font-semibold text-black"
-                  >
-                    <RetryIcon />
-                    Retry
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={retry}
+                  className="mx-auto flex min-h-[48px] items-center gap-2 rounded-full bg-teal-400 px-6 font-semibold text-black"
+                >
+                  <RetryIcon />
+                  Retry
+                </button>
               </div>
-            )}
+            </div>
+          )}
 
           {/* IFRAME */}
 
@@ -989,6 +872,7 @@ export default function ZokoPlayer({
               key={`${src}|${reload}`}
               ref={ref}
               src={src}
+              sandbox={SANDBOX}
               title={`Episode ${episode}`}
               allow="fullscreen; autoplay; picture-in-picture; encrypted-media"
               allowFullScreen
@@ -1003,21 +887,16 @@ export default function ZokoPlayer({
             />
           )}
 
-          {!loaded &&
-            !showProblem &&
-            !cosmicLoading &&
-            !cosmicError && (
-              <div className="pointer-events-none absolute inset-0 grid place-items-center">
-                <span className="h-9 w-9 animate-spin rounded-full border-[3px] border-white/20 border-t-white" />
-              </div>
-            )}
+          {!loaded && !showProblem && !cosmicLoading && !cosmicError && (
+            <div className="pointer-events-none absolute inset-0 grid place-items-center">
+              <span className="h-9 w-9 animate-spin rounded-full border-[3px] border-white/20 border-t-white" />
+            </div>
+          )}
 
           {expanded && (
             <button
               type="button"
-              onClick={() =>
-                setExpanded(false)
-              }
+              onClick={() => setExpanded(false)}
               aria-label="Exit full screen"
               className="absolute right-3 top-[calc(0.75rem+env(safe-area-inset-top))] z-10 rounded-full bg-black/70 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/20"
             >
@@ -1025,55 +904,46 @@ export default function ZokoPlayer({
             </button>
           )}
 
-          {showProblem &&
-            !cosmicLoading &&
-            !cosmicError && (
-              <div className="absolute inset-0 z-20 grid place-items-center bg-black/75 p-4 text-center text-white">
-                <div className="max-w-xs space-y-3">
-                  <p className="text-sm font-medium">
-                    {failed
-                      ? "This episode didn't load."
-                      : "Taking longer than usual..."}
-                  </p>
+          {showProblem && !cosmicLoading && !cosmicError && (
+            <div className="absolute inset-0 z-20 grid place-items-center bg-black/75 p-4 text-center text-white">
+              <div className="max-w-xs space-y-3">
+                <p className="text-sm font-medium">
+                  {failed
+                    ? "This episode didn't load."
+                    : "Taking longer than usual..."}
+                </p>
 
-                  <button
-                    type="button"
-                    onClick={retry}
-                    className="mx-auto flex min-h-[48px] items-center gap-2 rounded-full bg-teal-400 px-6 font-semibold text-black transition active:scale-[0.97]"
-                  >
-                    <RetryIcon />
-                    Retry
-                  </button>
+                <button
+                  type="button"
+                  onClick={retry}
+                  className="mx-auto flex min-h-[48px] items-center gap-2 rounded-full bg-teal-400 px-6 font-semibold text-black transition active:scale-[0.97]"
+                >
+                  <RetryIcon />
+                  Retry
+                </button>
 
-                  <p className="text-xs text-white/60">
-                    Try another server or track below.
-                  </p>
-                </div>
+                <p className="text-xs text-white/60">
+                  Try another server or track below.
+                </p>
               </div>
-            )}
+            </div>
+          )}
         </div>
       </div>
 
       {/* CONTROLS */}
 
       <div className="mt-4 space-y-3 pb-24 text-sm md:pb-0">
-
         {/* Episode navigation */}
 
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
           <button
             type="button"
             disabled={episode <= 1}
-            onClick={() =>
-              onEpisodeChange(
-                episode - 1
-              )
-            }
+            onClick={() => onEpisodeChange(episode - 1)}
             className={btn}
           >
-            <span aria-hidden>
-              &lsaquo;
-            </span>
+            <span aria-hidden>&lsaquo;</span>
             Previous
           </button>
 
@@ -1087,20 +957,12 @@ export default function ZokoPlayer({
 
           <button
             type="button"
-            disabled={
-              episode >= totalEpisodes
-            }
-            onClick={() =>
-              onEpisodeChange(
-                episode + 1
-              )
-            }
+            disabled={episode >= totalEpisodes}
+            onClick={() => onEpisodeChange(episode + 1)}
             className={btn}
           >
             Next
-            <span aria-hidden>
-              &rsaquo;
-            </span>
+            <span aria-hidden>&rsaquo;</span>
           </button>
         </div>
 
@@ -1118,50 +980,52 @@ export default function ZokoPlayer({
           >
             <button
               type="button"
-              aria-pressed={
-                server === "zoko"
-              }
-              onClick={() =>
-                changeServer("zoko")
-              }
+              aria-pressed={server === "zoko"}
+              onClick={() => changeServer("zoko")}
               className={`min-h-[48px] rounded-lg px-3 font-semibold transition ${
                 server === "zoko"
                   ? "bg-teal-400 text-black"
                   : "text-white/70 hover:bg-white/10"
               }`}
             >
-              <span className="block">
-                Server 1
-              </span>
+              <span className="block">Server 1</span>
 
-              <span className="text-xs opacity-70">
-                ZokoAnime
-              </span>
+              <span className="text-xs opacity-70">ZokoAnime</span>
             </button>
 
             <button
               type="button"
-              aria-pressed={
-                server === "cosmic"
-              }
-              onClick={() =>
-                changeServer("cosmic")
-              }
+              aria-pressed={server === "cosmic"}
+              onClick={() => changeServer("cosmic")}
               className={`min-h-[48px] rounded-lg px-3 font-semibold transition ${
                 server === "cosmic"
                   ? "bg-teal-400 text-black"
                   : "text-white/70 hover:bg-white/10"
               }`}
             >
-              <span className="block">
-                Server 2
-              </span>
+              <span className="block">Server 2</span>
 
-              <span className="text-xs opacity-70">
-                Cosmic
-              </span>
+              <span className="text-xs opacity-70">Cosmic</span>
             </button>
           </div>
+
+          {SERVER2_DOWN && !noticeHidden && (
+            <div
+              role="status"
+              className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/[0.03] py-1.5 pl-3 pr-1.5 text-xs text-white/50"
+            >
+              <p>Server 2 is currently not working. Please use Server 1.</p>
+
+              <button
+                type="button"
+                onClick={dismissNotice}
+                aria-label="Dismiss notice"
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-base leading-none text-white/40 transition hover:bg-white/10 hover:text-white"
+              >
+                &times;
+              </button>
+            </div>
+          )}
         </div>
 
         {/* TRACK */}
@@ -1177,21 +1041,15 @@ export default function ZokoPlayer({
             aria-label="Audio and subtitle track"
           >
             {TRACKS.map((t) => {
-              const disabled =
-                t === "dub" &&
-                !hasDub;
+              const disabled = t === "dub" && !hasDub;
 
               return (
                 <button
                   type="button"
                   key={t}
                   disabled={disabled}
-                  aria-pressed={
-                    track === t
-                  }
-                  onClick={() =>
-                    changeTrack(t)
-                  }
+                  aria-pressed={track === t}
+                  onClick={() => changeTrack(t)}
                   className={`min-h-[44px] rounded-lg px-3 font-semibold transition ${
                     track === t
                       ? "bg-teal-400 text-black"
@@ -1216,18 +1074,14 @@ export default function ZokoPlayer({
         <div className="rounded-lg bg-white/5 px-3 py-2 text-xs text-white/50">
           Using:{" "}
           <span className="font-semibold text-white">
-            {server === "zoko"
-              ? "ZokoAnime"
-              : "Cosmic"}
+            {server === "zoko" ? "ZokoAnime" : "Cosmic"}
           </span>
 
           {server === "zoko" && (
             <>
               {" "}
               •{" "}
-              <span className="text-white/70">
-                {track.toUpperCase()}
-              </span>
+              <span className="text-white/70">{track.toUpperCase()}</span>
             </>
           )}
         </div>
@@ -1238,22 +1092,12 @@ export default function ZokoPlayer({
           <button
             type="button"
             onClick={toggleFullscreen}
-            aria-label={
-              inFullscreen
-                ? "Exit full screen"
-                : "Full screen"
-            }
+            aria-label={inFullscreen ? "Exit full screen" : "Full screen"}
             className={action}
           >
-            <FullscreenIcon
-              exit={inFullscreen}
-            />
+            <FullscreenIcon exit={inFullscreen} />
 
-            <span>
-              {inFullscreen
-                ? "Exit"
-                : "Full screen"}
-            </span>
+            <span>{inFullscreen ? "Exit" : "Full screen"}</span>
           </button>
 
           <button
@@ -1272,50 +1116,34 @@ export default function ZokoPlayer({
             aria-pressed={ambient}
             aria-label="Ambient mode"
             className={`${action} ${
-              ambient
-                ? "!border-teal-400 !bg-teal-400 !text-black"
-                : ""
+              ambient ? "!border-teal-400 !bg-teal-400 !text-black" : ""
             }`}
           >
             <AmbientIcon />
 
-            <span>
-              Ambient{" "}
-              {ambient ? "on" : "off"}
-            </span>
+            <span>Ambient {ambient ? "on" : "off"}</span>
           </button>
 
           {canSync && ambient && (
             <button
               type="button"
-              onClick={
-                syncing
-                  ? stopSync
-                  : startSync
-              }
+              onClick={syncing ? stopSync : startSync}
               aria-pressed={syncing}
               className={`${action} ${
-                syncing
-                  ? "!border-teal-400 !bg-teal-400 !text-black"
-                  : ""
+                syncing ? "!border-teal-400 !bg-teal-400 !text-black" : ""
               }`}
             >
               <SyncIcon />
 
-              <span>
-                {syncing
-                  ? "Stop sync"
-                  : "Sync with video"}
-              </span>
+              <span>{syncing ? "Stop sync" : "Sync with video"}</span>
             </button>
           )}
         </div>
 
         {syncing && (
           <p className="text-xs text-white/50">
-            Sync is on: your browser shows a
-            &quot;sharing this tab&quot; notice.
-            Nothing is recorded or uploaded.
+            Sync is on: your browser shows a &quot;sharing this tab&quot;
+            notice. Nothing is recorded or uploaded.
           </p>
         )}
       </div>
