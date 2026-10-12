@@ -5,14 +5,13 @@ import AuthKeepAlive from "@/components/AuthKeepAlive";
 import Footer from "@/components/Footer";
 import Navbar from "@/components/Navbar";
 import NetworkStatus from "@/components/NetworkStatus";
+import { brandOrganizationJsonLd, brandWebsiteJsonLd } from "@/lib/brand-seo";
 import {
   SITE_URL,
   SITE_NAME,
   SITE_TITLE,
   SITE_DESCRIPTION,
   SITE_KEYWORDS,
-  websiteJsonLd,
-  organizationJsonLd,
   navigationJsonLd,
 } from "@/lib/seo";
 import "./globals.css";
@@ -32,13 +31,15 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  // Google shows the round icon next to the site name. It needs a square image whose size is a
-  // multiple of 48px (48, 96, 192, 512). Put these files in frontend/public/.
+  // Google shows the round icon next to the site name in search results. It must be a square image whose
+  // side is a multiple of 48px (48, 96, 144, 192...). 512 is NOT a multiple of 48, so it is left out here
+  // (it is still used for the installable-app icon in app/manifest.ts).
+  // Generate all of these from your logo with:  python tools/make_icons.py
   icons: {
     icon: [
-      { url: "/favicon.ico", sizes: "any" },
+      { url: "/favicon-48x48.png", sizes: "48x48", type: "image/png" },
       { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
-      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+      { url: "/favicon.ico", sizes: "any" },
     ],
     shortcut: "/favicon.ico",
     apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
@@ -81,7 +82,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
-            __html: JSON.stringify([websiteJsonLd, organizationJsonLd, navigationJsonLd]),
+            __html: JSON.stringify([brandWebsiteJsonLd, brandOrganizationJsonLd, navigationJsonLd]),
           }}
         />
       </head>
