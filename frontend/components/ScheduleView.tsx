@@ -17,6 +17,9 @@ const SCHEDULE_ORIGIN = (() => {
   }
 })();
 const VISIBLE = 7;
+// Video sites need a while to upload a new episode after it airs. Until then a row opens the details page,
+// so people are not sent to a player that says "Not found".
+const PLAYABLE_AFTER_MS = 3 * 60 * 60 * 1000;
 const GAP = 12; // px, matches gap-3
 const keyOf = (d: Date) => `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
 
@@ -426,7 +429,7 @@ export default function HomeSchedule() {
             {shown.map((s) => {
               // Aired + has a MAL id => open the episode in the player. Otherwise open the details page.
               const aired = s.airingAt * 1000 <= Date.now();
-              const playable = aired && !!s.media.idMal;
+              const playable = s.airingAt * 1000 + PLAYABLE_AFTER_MS <= Date.now() && !!s.media.idMal;
               const href = playable
                 ? `/watch/${animeSlug(s.media)}/${s.episode}`
                 : `/anime/${animeSlug(s.media)}`;
@@ -437,7 +440,7 @@ export default function HomeSchedule() {
                   <Link
                     href={href}
                     prefetch={false}
-                    title={playable ? `Watch episode ${s.episode}` : aired ? "Open details" : "Not aired yet - open details"}
+                    title={playable ? `Watch episode ${s.episode}` : aired ? "Just aired - open details" : "Not aired yet - open details"}
                     className="group flex items-center gap-3 px-1 py-3 hover:bg-neutral-800/60 sm:gap-4 sm:px-2"
                   >
                     <span className="w-11 shrink-0 text-sm font-normal tabular-nums text-neutral-500 sm:w-12 sm:text-base">
