@@ -1,10 +1,12 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import AnimeCard from "@/components/AnimeCard";
 import EpisodeSelector from "@/components/EpisodeSelector";
 import WatchlistButton from "@/components/WatchlistButton";
-import { getAnimeOrNull, getRecommendations } from "@/lib/api";
+import { animeJsonLd, animeMetadata, jsonLdString } from "@/lib/anime-seo";
+import { getAnime, getRecommendations } from "@/lib/api";
 import { animeSlug, availableEpisodes, displayTitle, idFromSlug, stripHtml } from "@/lib/types";
 
 function airsIn(ts: number) {
@@ -16,12 +18,21 @@ function airsIn(ts: number) {
   return d ? `in ${d}d ${h}h` : h ? `in ${h}h ${m}m` : `in ${m}m`;
 }
 
+// Title, description, canonical link and share card for search engines and link previews.
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  const { id: slug } = await params;
+  const id = idFromSlug(slug);
+  const anime = id ? await getAnime(id).catch(() => null) : null;
+  if (!anime) return { title: "Anime not found", robots: { index: false } };
+  return animeMetadata(anime, { path: `/anime/${animeSlug(anime)}` });
+}
+
 export default async function AnimePage({ params }: { params: Promise<{ id: string }> }) {
   const { id: slug } = await params;
   const id = idFromSlug(slug);
   if (!id) notFound();
   const [anime, recs] = await Promise.all([
-    getAnimeOrNull(id),
+    getAnime(id).catch(() => null),
     getRecommendations(id).catch(() => []),
   ]);
   if (!anime) notFound();
@@ -43,10 +54,12 @@ export default async function AnimePage({ params }: { params: Promise<{ id: stri
 
   return (
     <main style={{ "--accent": accent } as React.CSSProperties} className="relative -mt-24 w-full overflow-x-clip pb-28 md:pb-16">
+      {/* Structured data: lets Google show breadcrumbs and understand this is a series or movie. */}
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdString(animeJsonLd(anime, `/anime/${path}`)) }} />
       {/* Backdrop. A mask fades the whole thing to transparent at the bottom, so it melts into the
           page background (including the aurora glow) in both light and dark mode. */}
       <div
-        className="absolute inset-x-0 top-0 h-[26rem] overflow-hidden sm:h-[36rem]"
+        className="absolute inset-x-0 top-0 h-[30rem] overflow-hidden sm:h-[36rem]"
         style={{
           WebkitMaskImage: "linear-gradient(to bottom, #000 0%, #000 40%, rgba(0,0,0,0.55) 68%, transparent 100%)",
           maskImage: "linear-gradient(to bottom, #000 0%, #000 40%, rgba(0,0,0,0.55) 68%, transparent 100%)",
@@ -74,11 +87,9 @@ export default async function AnimePage({ params }: { params: Promise<{ id: stri
         )}
       </div>
 
-      {/* The page is pulled up 6rem by -mt-24, so on phones the top padding must cover that 6rem
-          plus the header height. pt-36 does that. md and up keep the original values. */}
-      <div className="relative px-4 pt-36 sm:px-6 md:pt-24 lg:pt-28">
+      <div className="relative px-4 pt-10 sm:px-6 md:pt-24 lg:pt-28">
         {/* Breadcrumb */}
-        <nav className="mb-4 flex min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap text-xs text-white/50 sm:mb-6">
+        <nav className="mb-5 flex min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap text-xs text-white/50 sm:mb-6">
           <Link href="/" className="hover:text-teal-400">Home</Link>
           <span>/</span>
           {anime.format && (
@@ -90,18 +101,18 @@ export default async function AnimePage({ params }: { params: Promise<{ id: stri
           <span className="min-w-0 truncate text-white/80">{displayTitle(anime)}</span>
         </nav>
 
-        <div className="grid grid-cols-1 gap-5 sm:gap-8 lg:grid-cols-[15rem_minmax(0,1fr)]">
-          {/* Poster: smaller on phones so the title and buttons show without long scrolling */}
-          <div className="mx-auto w-32 sm:w-48 lg:mx-0 lg:w-full">
-            <div className="relative aspect-[2/3] -rotate-2 overflow-hidden rounded-2xl ring-1 ring-white/20 shadow-[0_25px_90px_-25px_var(--accent)] transition duration-500 hover:rotate-0 hover:scale-[1.02] sm:rounded-3xl">
-              <Image src={anime.coverImage.extraLarge} alt={displayTitle(anime)} fill priority sizes="(max-width: 640px) 128px, 240px" className="object-cover" />
+        <div className="grid grid-cols-1 gap-6 sm:gap-8 lg:grid-cols-[15rem_minmax(0,1fr)]">
+          {/* Poster */}
+          <div className="mx-auto w-40 sm:w-52 lg:mx-0 lg:w-full">
+            <div className="relative aspect-[2/3] -rotate-2 overflow-hidden rounded-3xl ring-1 ring-white/20 shadow-[0_25px_90px_-25px_var(--accent)] transition duration-500 hover:rotate-0 hover:scale-[1.02]">
+              <Image src={anime.coverImage.extraLarge} alt={displayTitle(anime)} fill priority sizes="240px" className="object-cover" />
             </div>
           </div>
 
           {/* Details */}
           <div className="min-w-0 space-y-4 max-lg:text-center sm:space-y-5">
             <div>
-              <h1 className="break-words font-display text-2xl font-semibold leading-[1.15] sm:text-5xl lg:text-6xl">{displayTitle(anime)}</h1>
+              <h1 className="break-words font-display text-3xl font-semibold leading-[1.1] sm:text-5xl lg:text-6xl">{displayTitle(anime)}</h1>
               {anime.title.english && anime.title.english !== anime.title.romaji && (
                 <p className="mt-2 text-sm text-white/50">{anime.title.romaji}</p>
               )}
@@ -111,17 +122,17 @@ export default async function AnimePage({ params }: { params: Promise<{ id: stri
             <div className="flex flex-wrap items-center gap-3 max-lg:justify-center">
               {score != null && (
                 <div
-                  className="grid h-14 w-14 place-items-center rounded-full sm:h-16 sm:w-16"
+                  className="grid h-16 w-16 place-items-center rounded-full"
                   style={{ background: `conic-gradient(#c8ff3d ${score}%, var(--ring-track) 0)` }}
                   title={`${score}% on AniList`}
                 >
-                  <div className="grid h-[2.9rem] w-[2.9rem] place-items-center rounded-full bg-[color:var(--card-bg)] font-display text-base sm:h-[3.4rem] sm:w-[3.4rem] sm:text-lg">
+                  <div className="grid h-[3.4rem] w-[3.4rem] place-items-center rounded-full bg-[color:var(--card-bg)] font-display text-lg">
                     {(score / 10).toFixed(1)}
                   </div>
                 </div>
               )}
               {airing && (
-                <span className="glass flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5 rounded-full px-4 py-2 text-sm">
+                <span className="glass flex items-center gap-2 rounded-full px-4 py-2 text-sm">
                   <span className="relative flex h-2.5 w-2.5">
                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-teal-400 opacity-75" />
                     <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-teal-400" />
@@ -149,57 +160,42 @@ export default async function AnimePage({ params }: { params: Promise<{ id: stri
               ))}
             </div>
 
-            {/* Actions: on phones the Watch button gets its own full-width row on one line,
-                with Episodes and Save side by side below it */}
-            {canWatch ? (
-              <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:items-center max-lg:sm:justify-center">
-                <Link
-                  href={`/watch/${path}/1`}
-                  className="col-span-2 whitespace-nowrap rounded-full bg-teal-400 px-6 py-3.5 text-center text-sm font-semibold text-black shadow-[0_0_40px_-6px_rgba(200,255,61,0.6)] transition hover:brightness-110 sm:px-8 sm:py-3"
-                >
-                  &#9654; Watch episode 1
-                </Link>
-                <a
-                  href="#episodes"
-                  className="glass flex items-center justify-center whitespace-nowrap rounded-full px-5 py-3 text-center text-sm transition hover:bg-white/10 sm:px-6"
-                >
-                  Episodes
-                </a>
-                <div className="flex [&>*]:w-full sm:block sm:[&>*]:w-auto">
-                  <WatchlistButton
-                    anime={{
-                      id: anime.id,
-                      slug: path,
-                      title: displayTitle(anime),
-                      cover: anime.coverImage.large,
-                      format: anime.format,
-                    }}
-                  />
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-wrap items-center gap-3 max-lg:justify-center">
+            {/* Actions */}
+            <div className="flex flex-wrap items-center gap-3 max-lg:justify-center">
+              {canWatch ? (
+                <>
+                  <Link
+                    href={`/watch/${path}/1`}
+                    className="min-w-0 flex-1 rounded-full bg-teal-400 px-5 py-3 text-center text-sm font-semibold text-black shadow-[0_0_40px_-6px_rgba(200,255,61,0.6)] transition hover:brightness-110 sm:flex-none sm:px-8"
+                  >
+                    &#9654; Watch episode 1
+                  </Link>
+                  <a href="#episodes" className="glass min-w-0 flex-1 rounded-full px-5 py-3 text-center text-sm transition hover:bg-white/10 sm:flex-none sm:px-6">
+                    Episodes
+                  </a>
+                </>
+              ) : (
                 <p className="glass rounded-full px-5 py-2.5 text-sm text-white/50">No episodes available to watch yet.</p>
-                <WatchlistButton
-                  anime={{
-                    id: anime.id,
-                    slug: path,
-                    title: displayTitle(anime),
-                    cover: anime.coverImage.large,
-                    format: anime.format,
-                  }}
-                />
-              </div>
-            )}
+              )}
+              <WatchlistButton
+                anime={{
+                  id: anime.id,
+                  slug: path,
+                  title: displayTitle(anime),
+                  cover: anime.coverImage.large,
+                  format: anime.format,
+                }}
+              />
+            </div>
 
             {/* Info tiles */}
-            <dl className="grid max-w-2xl grid-cols-2 gap-2 text-left sm:grid-cols-4 sm:gap-3 max-lg:mx-auto">
+            <dl className="grid max-w-2xl grid-cols-2 gap-2.5 text-left sm:grid-cols-4 sm:gap-3 max-lg:mx-auto">
               {tiles
                 .filter(([, v]) => v)
                 .map(([k, v]) => (
-                  <div key={k} className="glass min-w-0 rounded-2xl px-3.5 py-2.5 sm:px-4 sm:py-3">
+                  <div key={k} className="glass rounded-2xl px-4 py-3">
                     <dt className="text-[10px] uppercase tracking-[0.18em] text-white/40">{k}</dt>
-                    <dd className="mt-1 truncate text-sm capitalize">{v}</dd>
+                    <dd className="mt-1 text-sm capitalize">{v}</dd>
                   </div>
                 ))}
             </dl>

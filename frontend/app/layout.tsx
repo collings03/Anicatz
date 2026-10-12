@@ -1,5 +1,5 @@
 // frontend/app/layout.tsx
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, Space_Grotesk } from "next/font/google";
 import AuthKeepAlive from "@/components/AuthKeepAlive";
 import Footer from "@/components/Footer";
@@ -20,6 +20,16 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const grotesk = Space_Grotesk({ subsets: ["latin"], variable: "--font-grotesk" });
 
+// Theme colour for the phone's browser bar and the installed-app window.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: [
+    { media: "(prefers-color-scheme: dark)", color: "#0f0e24" },
+    { media: "(prefers-color-scheme: light)", color: "#f4f4f8" },
+  ],
+};
+
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   // Google shows the round icon next to the site name. It needs a square image whose size is a
@@ -37,20 +47,31 @@ export const metadata: Metadata = {
   description: SITE_DESCRIPTION,
   keywords: SITE_KEYWORDS,
   applicationName: SITE_NAME,
-  alternates: { canonical: "/" },
+  category: "entertainment",
+  // NOTE: no `alternates.canonical` and no `openGraph.url` here on purpose. Layout values are inherited by
+  // EVERY page, so a canonical of "/" would tell Google that all your anime pages are duplicates of the homepage.
+  // Each page sets its own (anime and watch pages do it in generateMetadata).
   openGraph: {
     type: "website",
     siteName: SITE_NAME,
+    locale: "en_US",
     title: SITE_TITLE,
     description: SITE_DESCRIPTION,
-    url: SITE_URL,
   },
   twitter: {
     card: "summary_large_image",
     title: SITE_TITLE,
     description: SITE_DESCRIPTION,
   },
-  robots: { index: true, follow: true },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: { index: true, follow: true, "max-image-preview": "large", "max-snippet": -1, "max-video-preview": -1 },
+  },
+  // Google Search Console: paste the code from "HTML tag" verification into NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION.
+  verification: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION
+    ? { google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION }
+    : undefined,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
