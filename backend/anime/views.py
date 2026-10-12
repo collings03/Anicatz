@@ -59,7 +59,7 @@ def _guard(request, fn, *args, ttl=600):
         busy = isinstance(exc, anilist.RateLimited)
         resp = Response({"detail": str(exc)}, status=503 if busy else 502)
         if busy:
-            resp["Retry-After"] = "30"
+            resp["Retry-After"] = str(getattr(exc, "retry_after", 30))
         return _no_store(resp)
     cache.set(key, data, STALE_SECONDS)
     return _cached(Response(data), ttl)

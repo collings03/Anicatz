@@ -27,7 +27,12 @@ class AniListError(Exception):
 
 
 class RateLimited(AniListError):
-    """AniList said slow down. We stop asking for a while so we don't make the block last longer."""
+    """AniList said slow down. We stop asking for a while so we don't make the block last longer.
+    `retry_after` is how many seconds are really left, so visitors are not told to wait longer than needed."""
+
+    def __init__(self, message="AniList rate limit exceeded", retry_after=30):
+        super().__init__(message)
+        self.retry_after = max(1, int(retry_after))
 
 
 MEDIA_FIELDS = """
@@ -88,12 +93,15 @@ def run(gql, variables=None, ttl=None):
         return cached
 
     # Still cooling down from a recent 429: answer immediately instead of hammering AniList.
-    if cache.get(COOLDOWN_KEY):
-        raise RateLimited("AniList rate limit exceeded")
+    until = cache.get(COOLDOWN_KEY)
+    if until:
+        left = until - time.time() if isinstance(until, (int, float)) and not isinstance(until, bool) else 30
+        raise RateLimited("AniList rate limit exceeded", left)
 
     # Out of our own per-minute budget: the caller falls back to the last saved copy.
     if not _budget_ok():
-        raise RateLimited("AniList rate limit exceeded")
+        # The budget is per calendar minute, so the wait is only until the next minute starts.
+        raise RateLimited("AniList rate limit exceeded", 61 - int(time.time()) % 60)
 
     for attempt in range(2):
         try:
@@ -112,8 +120,9 @@ def run(gql, variables=None, ttl=None):
                 time.sleep(wait)  # clears almost at once: one quick retry is fine
                 continue
             # Never sleep for long inside a serverless function (it would time out): back off and fail fast.
-            cache.set(COOLDOWN_KEY, True, min(max(wait, 5), 60))
-            raise RateLimited("AniList rate limit exceeded")
+            pause = min(max(wait, 5), 60)
+            cache.set(COOLDOWN_KEY, time.time() + pause, pause)
+            raise RateLimited("AniList rate limit exceeded", pause)
 
         if r.status_code == 404:
             return None
