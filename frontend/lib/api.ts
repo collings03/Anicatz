@@ -4,6 +4,10 @@ import type { Anime, AnimePage } from "./types";
 const API =
   process.env.NEXT_PUBLIC_API_URL ?? "https://anicatz-1.onrender.com/api";
 
+// Render's free backend can take 30-60 seconds to wake up after a pause, so the wait must be longer than that.
+// (A 10 second limit cut those requests off and the home page sections disappeared.)
+const TIMEOUT_MS = 55000;
+
 export class ApiError extends Error {
   status: number;
 
@@ -25,7 +29,7 @@ async function get<T>(path: string): Promise<T> {
     try {
       const res = await fetch(url, {
         next: { revalidate: 300 },
-        signal: AbortSignal.timeout(10000),
+        signal: AbortSignal.timeout(TIMEOUT_MS),
       });
 
       if (res.ok) return await res.json();
