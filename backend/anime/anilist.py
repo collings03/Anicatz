@@ -65,6 +65,21 @@ SORTS = {
 STATUSES = {"RELEASING", "FINISHED", "NOT_YET_RELEASED"}
 FORMATS = {"TV", "MOVIE", "OVA", "ONA", "SPECIAL", "TV_SHORT"}
 
+MEDIA_TTL = 24 * 3600
+
+
+def remember_media(items):
+    """Saves every anime that appears in a list (trending, browse, the schedule...), so its own page can still
+    open when AniList is rate-limiting. A full copy (with the synopsis) is never replaced by a thinner one."""
+    for m in items:
+        if not isinstance(m, dict) or not m.get("id"):
+            continue
+        key = f"media:{m['id']}"
+        old = cache.get(key)
+        if old and old.get("description") and not m.get("description"):
+            continue
+        cache.set(key, m, MEDIA_TTL)
+
 
 def _budget_ok():
     """Counts the requests we send to AniList in the current minute and refuses to go over its limit.
@@ -173,6 +188,7 @@ def _list(sort, page, per_page, search=None, status=None, fmt=None, genre=None):
     data = run(gql, variables)
     if not data:
         raise AniListError("AniList returned no data")
+    remember_media(data["Page"]["media"])
     return data["Page"]
 
 
@@ -194,8 +210,19 @@ def browse(sort="popular", status=None, fmt=None, genre=None, page=1, per_page=2
 
 def detail(anilist_id):
     gql = f"query ($id: Int) {{ Media(id: $id, type: ANIME) {{ {MEDIA_FIELDS} }} }}"
-    data = run(gql, {"id": anilist_id})
-    return data["Media"] if data else None
+    try:
+        data = run(gql, {"id": anilist_id})
+    except AniListError:
+        # AniList is busy: use the copy saved when this anime appeared in a list, marked so it is only cached briefly.
+        saved = cache.get(f"media:{anilist_id}")
+        if saved:
+            # Schedule rows have no banner or synopsis. Fill them in as empty so the page never meets a missing field.
+            return {"bannerImage": None, "description": None, **saved, "_partial": True}
+        raise
+    media = data["Media"] if data else None
+    if media:
+        remember_media([media])
+    return media
 
 
 def recommendations(anilist_id, per_page=12):
@@ -272,4 +299,5 @@ def schedule(start=None, end=None, days=7):
     for pg in pages:
         items += [s for s in pg["airingSchedules"] if s["media"] and not s["media"].get("isAdult")]
     items.sort(key=lambda s: s["airingAt"])
+    remember_media([s["media"] for s in items])
     return items
