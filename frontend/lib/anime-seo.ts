@@ -1,10 +1,10 @@
 // Search-engine metadata for anime and watch pages.
 import type { Metadata } from "next";
-import { getAnime } from "@/lib/api";
+import { getAnimeOrNull } from "@/lib/api";
 import { SITE_NAME, SITE_URL } from "@/lib/seo";
 import { displayTitle, stripHtml } from "@/lib/types";
 
-type Anime = NonNullable<Awaited<ReturnType<typeof getAnime>>>;
+type Anime = NonNullable<Awaited<ReturnType<typeof getAnimeOrNull>>>;
 
 const site = SITE_URL.replace(/\/+$/, "");
 
