@@ -29,8 +29,12 @@ const SLOW_MS = 12000;
 const SERVER2_DOWN = true;
 const NOTICE_KEY = "anicatz-server2-notice-dismissed";
 
-// Blocks popups and top-level redirects from the embedded players.
-// Deliberately omits allow-popups and allow-top-navigation.
+// AniList (which this site uses for episode numbers) and ZokoAnime do not always count episodes the same way.
+// For a show that is shifted, add its MAL id here with the number to ADD to the episode sent to Zoko.
+// Example: { 12345: -12 } means AniList episode 13 plays episode 1 on Zoko (and 14 plays 2, and so on).
+// An empty table changes nothing.
+const ZOKO_EPISODE_OFFSET: Record<number, number> = {};
+
 // Popups and top-level redirects stay blocked in both lists (no allow-popups,
 // no allow-top-navigation). The mobile list only adds permissions that player
 // controls commonly need on phones.
@@ -449,7 +453,9 @@ export default function ZokoPlayer({
   // --------------------------------------------------
 
   const zokoSrc = useMemo(() => {
-    return `${ZOKO_BASE}/stream/mal/${malId}/${episode}/${track}?color=${hex}`;
+    const zokoEpisode = Math.max(1, episode + (ZOKO_EPISODE_OFFSET[malId] ?? 0));
+
+    return `${ZOKO_BASE}/stream/mal/${malId}/${zokoEpisode}/${track}?color=${hex}`;
   }, [malId, episode, track, hex]);
 
   // --------------------------------------------------
