@@ -27,11 +27,29 @@ const FRESH_MS = 5 * 60 * 1000; // newer than this: no request at all
 const STALE_MS = 6 * 60 * 60 * 1000; // newer than this: show it instantly, refresh in the background
 const PREFIX = "anicatz:sched:";
 
+// When the server is busy (AniList rate limit) a day is retried on its own after these many seconds.
+// After the last one the error screen appears, with a "Try again" button.
+const BACKOFF_SECONDS = [5, 10, 20, 30, 45];
+
 const memory = new Map<string, Entry>(); // lives as long as the tab
 const inflight = new Map<string, Promise<ScheduleItem[]>>(); // one request per day, even if asked twice
 
 const idOf = (lang: string, d: Date) => `${lang}:${keyOf(d)}`;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** A failed schedule request, with the status and how long the server asked us to wait (Retry-After). */
+class ScheduleError extends Error {
+  status: number;
+  retryAfter: number;
+  constructor(status: number, retryAfter = 0) {
+    super(`HTTP ${status}`);
+    this.status = status;
+    this.retryAfter = retryAfter;
+  }
+}
+
+/** Busy server (429/5xx) or no connection: worth trying again. Other 4xx errors will not fix themselves. */
+const isRetryable = (e: unknown) => !(e instanceof ScheduleError) || e.status === 429 || e.status >= 500;
 
 /** Day from memory, or from the copy saved in the browser (so a page reload is instant). */
 function readEntry(id: string): Entry | undefined {
@@ -68,20 +86,13 @@ function writeEntry(id: string, data: ScheduleItem[]) {
 }
 
 /**
- * GET with one automatic retry for cold starts (5xx) and dropped connections.
- * The wait is longer than before (2.5s) so a backend that is rate-limited by AniList
- * gets a little room instead of being hit again right away.
+ * GET. A dropped connection gets one quick retry here. A busy server (503/429) is NOT retried here:
+ * the component retries it with a visible countdown, so the page never looks frozen.
  */
 async function fetchJson(url: string, attempt = 0): Promise<ScheduleItem[]> {
   try {
     const r = await fetch(url);
-    if (!r.ok) {
-      if (attempt < 1 && r.status >= 500) {
-        await sleep(2500);
-        return fetchJson(url, 1);
-      }
-      throw new Error(`HTTP ${r.status}`);
-    }
+    if (!r.ok) throw new ScheduleError(r.status, Number(r.headers.get("Retry-After")) || 0);
     return (await r.json()) as ScheduleItem[];
   } catch (e) {
     if (attempt < 1 && e instanceof TypeError) {
@@ -170,8 +181,10 @@ export default function HomeSchedule() {
   const [selected, setSelected] = useState(0);
   const [, setTick] = useState(0); // re-render when a day finishes loading into the shared cache
   const [error, setError] = useState<string | null>(null);
+  const [wait, setWait] = useState<number | null>(null); // seconds until the next automatic retry
   const [retry, setRetry] = useState(0);
   const [showAll, setShowAll] = useState(false);
+  const attempts = useRef<Record<string, number>>({}); // automatic retries used so far, per day
   const strip = useRef<HTMLDivElement>(null);
   const tabs = useRef<(HTMLButtonElement | null)[]>([]);
 
@@ -208,6 +221,7 @@ export default function HomeSchedule() {
     if (!days.length) return;
     const lang = clientLang();
     const d = days[selected];
+    const id = idOf(lang, d);
     let alive = true;
     const timers: number[] = [];
     const cleanup = () => {
@@ -227,8 +241,26 @@ export default function HomeSchedule() {
       );
     };
 
+    // Shows "Trying again in Ns" and retries by itself when the countdown ends.
+    const countdown = (seconds: number) => {
+      let left = seconds;
+      setWait(left);
+      const iv = window.setInterval(() => {
+        left -= 1;
+        if (left <= 0) {
+          window.clearInterval(iv);
+          setWait(null);
+          setRetry((r) => r + 1);
+        } else {
+          setWait(left);
+        }
+      }, 1000);
+      timers.push(iv);
+    };
+
     setError(null);
-    const hit = readEntry(idOf(lang, d));
+    setWait(null);
+    const hit = readEntry(id);
     if (hit && Date.now() - hit.t < FRESH_MS) {
       prefetch();
       return cleanup;
@@ -237,17 +269,55 @@ export default function HomeSchedule() {
     loadDay(d, lang)
       .then(() => {
         if (!alive) return;
+        attempts.current[id] = 0;
         setTick((n) => n + 1);
         prefetch();
       })
       .catch((e) => {
         if (!alive || hit) return; // an older copy is already on screen: keep it, stay quiet
+
+        const used = attempts.current[id] ?? 0;
+        if (isRetryable(e) && used < BACKOFF_SECONDS.length) {
+          attempts.current[id] = used + 1;
+          const asked = e instanceof ScheduleError ? e.retryAfter : 0;
+          countdown(Math.min(Math.max(asked, BACKOFF_SECONDS[used]), 60));
+          return;
+        }
         console.error("Schedule request failed:", SCHEDULE_URL, e);
-        // Shows the real reason on screen (e.g. "HTTP 502" or "Failed to fetch") so it can be fixed fast.
+        // Shows the real reason on screen (e.g. "HTTP 503" or "Failed to fetch") so it can be fixed fast.
         setError(`${e.message || "Network error"} - ${SCHEDULE_URL}`);
       });
     return cleanup;
   }, [days, selected, retry]);
+
+  // Keeps the page fresh by itself: re-checks every 5 minutes while the tab is open and visible,
+  // and tries again straight away when the connection returns or the tab is opened again after a failure.
+  useEffect(() => {
+    const bump = () => setRetry((r) => r + 1);
+    const every = window.setInterval(() => {
+      if (document.visibilityState === "visible") bump();
+    }, FRESH_MS);
+    const onBack = () => {
+      if (document.visibilityState !== "visible") return;
+      attempts.current = {};
+      bump();
+    };
+    window.addEventListener("online", onBack);
+    document.addEventListener("visibilitychange", onBack);
+    return () => {
+      window.clearInterval(every);
+      window.removeEventListener("online", onBack);
+      document.removeEventListener("visibilitychange", onBack);
+    };
+  }, []);
+
+  /** "Try now" / "Try again": forget the failed attempts and load the day immediately. */
+  const retryNow = () => {
+    attempts.current = {};
+    setWait(null);
+    setError(null);
+    setRetry((r) => r + 1);
+  };
 
   const pick = (i: number) => {
     setSelected(i);
@@ -334,10 +404,20 @@ export default function HomeSchedule() {
           fullScreen={false}
           variant={isNetworkError(error) ? "network" : "server"}
           detail={error}
-          onRetry={() => setRetry((n) => n + 1)}
+          onRetry={retryNow}
         />
       ) : !items ? (
-        <ScheduleSkeleton />
+        <>
+          {wait !== null && (
+            <p className="mb-3 flex flex-wrap items-center gap-x-2 text-sm text-neutral-400" role="status">
+              The schedule server is busy. Trying again in {wait}s...
+              <button type="button" onClick={retryNow} className="text-pink-300 hover:underline">
+                Try now
+              </button>
+            </p>
+          )}
+          <ScheduleSkeleton />
+        </>
       ) : sorted.length === 0 ? (
         <p className="text-sm text-neutral-400">Nothing scheduled for this day.</p>
       ) : (

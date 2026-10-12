@@ -168,6 +168,9 @@ CORS_ALLOWED_ORIGINS = sorted(
 # This lets those previews call the API too, without listing each one.
 CORS_ALLOWED_ORIGIN_REGEXES = [r"^https://anicatz[a-z0-9-]*\.vercel\.app$"]
 
+# Lets the browser read these response headers (the schedule page uses Retry-After to time its automatic retry).
+CORS_EXPOSE_HEADERS = ["Retry-After", "X-Stale"]
+
 # Needed for admin / session-cookie POSTs coming from these HTTPS sites.
 CSRF_TRUSTED_ORIGINS = [o for o in CORS_ALLOWED_ORIGINS if o.startswith("https://")]
 

@@ -139,7 +139,9 @@ def schedule(request):
         now = int(time.time())
         if end <= start or end - start > 2 * 86400 or abs(start - now) > 120 * 86400:
             return Response({"detail": "invalid range"}, status=400)
-        return _guard(request, anilist.schedule, start, end, ttl=300)
+        # Past days never change: let the CDN keep them for hours. Today and the future refresh every 5 minutes.
+        ttl = 6 * 3600 if end < now - 3600 else 300
+        return _guard(request, anilist.schedule, start, end, ttl=ttl)
     return _guard(request, anilist.schedule, ttl=300)
 
 

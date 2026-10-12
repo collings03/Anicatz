@@ -81,7 +81,7 @@ def _remember_limit(response):
         cache.set(LIMIT_KEY, int(header), 3600)
 
 
-def run(gql, variables=None):
+def run(gql, variables=None, ttl=None):
     key = "anilist:" + hashlib.sha256(json.dumps([gql, variables], sort_keys=True).encode()).hexdigest()
     cached = cache.get(key)
     if cached is not None:
@@ -131,7 +131,7 @@ def run(gql, variables=None):
 
         data = body.get("data")
         if data:
-            cache.set(key, data, settings.CACHE_TTL_SECONDS)
+            cache.set(key, data, ttl or settings.CACHE_TTL_SECONDS)
         return data
     raise RateLimited("AniList rate limit exceeded")
 
@@ -229,8 +229,12 @@ def schedule(start=None, end=None, days=7):
       }}
     }}"""
 
+    # A day that is already over never changes again, so it is kept for hours (every date then loads from the
+    # cache after the first visit). Today and the future can still change, so they use the normal short time.
+    ttl = 6 * 3600 if end < time.time() - 3600 else settings.CACHE_TTL_SECONDS
+
     def fetch(page):
-        data = run(gql, {"start": start, "end": end, "page": page})
+        data = run(gql, {"start": start, "end": end, "page": page}, ttl=ttl)
         return data["Page"] if data else None
 
     first = fetch(1)
