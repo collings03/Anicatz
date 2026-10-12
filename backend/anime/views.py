@@ -65,6 +65,31 @@ def _guard(request, fn, *args, ttl=600):
     return _cached(Response(data), ttl)
 
 
+WEEK = 7 * 86400
+
+
+def _schedule_range(start, end):
+    """Airing episodes between two timestamps, served from cached WEEKS.
+
+    The first request for a week downloads the whole week from AniList once and saves it. Every other day of that
+    week is then answered from the saved week, so seven days cost about one week of requests instead of seven
+    separate ones. Pages that were already downloaded are kept by anilist.run(), so if AniList says "slow down"
+    half way, the next try continues from where it stopped instead of starting over."""
+    now = time.time()
+    items = []
+    for bucket in range(start // WEEK, (end - 1) // WEEK + 1):
+        ws, we = bucket * WEEK, (bucket + 1) * WEEK
+        key = f"schedule:week:{bucket}"
+        week = cache.get(key)
+        if week is None:
+            week = anilist.schedule(ws - 1, we)  # AniList's bounds are exclusive on both sides
+            # A week that is over never changes: keep it a day. The current and later weeks refresh sooner.
+            cache.set(key, week, 24 * 3600 if we < now - 3600 else settings.CACHE_TTL_SECONDS)
+        items += [s for s in week if start <= s["airingAt"] < end]
+    items.sort(key=lambda s: s["airingAt"])
+    return items
+
+
 @api_view(["GET"])
 def trending(request):
     return _guard(
@@ -141,7 +166,7 @@ def schedule(request):
             return Response({"detail": "invalid range"}, status=400)
         # Past days never change: let the CDN keep them for hours. Today and the future refresh every 5 minutes.
         ttl = 6 * 3600 if end < now - 3600 else 300
-        return _guard(request, anilist.schedule, start, end, ttl=ttl)
+        return _guard(request, _schedule_range, start, end, ttl=ttl)
     return _guard(request, anilist.schedule, ttl=300)
 
 
